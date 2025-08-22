@@ -201,7 +201,7 @@ class JobURLScraper:
             print(f"Cookie modal handling failed: {e}")
             # Continue anyway, maybe modal didn't appear
 
-    def handle_modals(self, page):
+    async def handle_modals(self, page):
         """Handle cookie consent modal and connection error modal if they appear"""
         # Handle connection error modal first with infinite retry logic
         self.handle_connection_error_modal(page)
@@ -248,7 +248,7 @@ class JobURLScraper:
                 await page.wait_for_load_state("networkidle")
                 
                 # Handle modals if they appear (including infinite retry for connection errors)
-                self.handle_modals(page)
+                await self.handle_modals(page)
                 
                 page_count = start_page
                 

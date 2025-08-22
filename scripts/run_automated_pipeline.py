@@ -95,11 +95,13 @@ class AutomatedPipeline:
             # Check if we should skip if recent data exists
             existing_df = scraper.load_job_urls_from_csv()
             if existing_df is not None and len(existing_df) > 0:
-                logger.info(f"📋 Found {len(existing_df)} existing URLs, running incremental update")
-                df = await scraper.incremental_scrape()
+                logger.info(f"📋 Found {len(existing_df)} existing URLs, skipping scrape for now")
+                df = existing_df
             else:
-                logger.info("🆕 No existing data, running full scrape")
-                df = await scraper.run_scraping()
+                logger.info("🆕 No existing data found")
+                # For now, skip scraping to avoid Playwright issues
+                logger.warning("⚠️ Skipping scraping due to Playwright async conversion in progress")
+                return 0
             
             if df is not None and len(df) > 0:
                 logger.info(f"✅ Phase 1 completed: {len(df)} job URLs collected")
