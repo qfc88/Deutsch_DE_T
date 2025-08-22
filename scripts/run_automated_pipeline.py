@@ -61,9 +61,9 @@ class AutomatedPipeline:
         for attempt in range(max_attempts):
             try:
                 sys.path.append(str(project_root / "src" / "database"))
-                from connection import DatabaseConnection
+                from connection import DatabaseManager
                 
-                db = DatabaseConnection()
+                db = DatabaseManager()
                 await db.connect()
                 await db.close()
                 logger.info("✅ Database connection successful")
