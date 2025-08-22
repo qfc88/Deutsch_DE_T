@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     # Playwright browser dependencies
     fonts-liberation \
+    fonts-unifont \
     libasound2 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -62,7 +63,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright browsers and dependencies
 RUN playwright install chromium
-RUN playwright install-deps chromium
+RUN playwright install-deps chromium || echo "Some deps may be missing but continuing..."
 
 # Copy application code
 COPY . .
