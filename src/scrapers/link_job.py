@@ -97,7 +97,7 @@ class JobURLScraper:
         except Exception as e:
             print(f"Failed to cleanup temp files: {e}")
 
-    def handle_connection_error_modal(self, page):
+    async def handle_connection_error_modal(self, page):
         """Handle 'Keine Verbindung' (No Connection) error modal with infinite retry until connection is stable"""
         retry_count = 0
         
@@ -108,29 +108,29 @@ class JobURLScraper:
                 modal_title = page.locator('#modal-title:has-text("Keine Verbindung")')
                 
                 # Wait briefly to see if modal appears
-                if error_modal.is_visible(timeout=3000) and modal_title.is_visible():
+                if await error_modal.is_visible(timeout=3000) and await modal_title.is_visible():
                     retry_count += 1
                     print(f"Connection error modal detected (attempt {retry_count})...")
                     
                     # Always try "Erneut versuchen" (Try again) button
                     retry_btn = page.locator('#modal-ok:has-text("Erneut versuchen")')
-                    if retry_btn.is_visible():
+                    if await retry_btn.is_visible():
                         print("Clicking 'Erneut versuchen'")
-                        retry_btn.click()
+                        await retry_btn.click()
                         
                         # Wait for modal to disappear
                         try:
-                            page.wait_for_selector('#modal', state="hidden", timeout=10000)
+                            await page.wait_for_selector('#modal', state="hidden", timeout=10000)
                             print("Modal disappeared, waiting for network idle...")
                             
                             # Wait for network idle - this is crucial for connection stability
-                            page.wait_for_load_state("networkidle", timeout=30000)
+                            await page.wait_for_load_state("networkidle", timeout=30000)
                             
                             # Additional wait for page to fully stabilize
                             time.sleep(3)
                             
                             # Check if page is now accessible by looking for job results or main content
-                            if page.locator(".ergebnisliste-item").count() > 0 or page.locator("#app").is_visible():
+                            if await page.locator(".ergebnisliste-item").count() > 0 or await page.locator("#app").is_visible():
                                 print(f"Page loaded successfully after {retry_count} retries")
                                 return True
                             else:
@@ -165,36 +165,36 @@ class JobURLScraper:
         # This return will never be reached due to infinite loop
         # return False
     
-    def handle_cookie_modal(self, page):
+    async def handle_cookie_modal(self, page):
         """Handle cookie consent modal if it appears"""
         try:
             # Wait for cookie modal to appear (max 5 seconds)
             cookie_modal = page.locator("#bahf-cookie-disclaimer-modal")
             
-            if cookie_modal.is_visible(timeout=5000):
+            if await cookie_modal.is_visible(timeout=5000):
                 print("Cookie modal detected, handling...")
                 
                 # Click "Alle Cookies ablehnen" (Reject all cookies)
                 reject_btn = page.locator('[data-testid="bahf-cookie-disclaimer-btn-ablehnen"]')
                 
-                if reject_btn.is_visible():
-                    reject_btn.click()
+                if await reject_btn.is_visible():
+                    await reject_btn.click()
                     print("Clicked 'Alle Cookies ablehnen'")
                     
                     # Wait for modal to disappear
-                    page.wait_for_selector("#bahf-cookie-disclaimer-modal", state="hidden", timeout=5000)
+                    await page.wait_for_selector("#bahf-cookie-disclaimer-modal", state="hidden", timeout=5000)
                     
                     # Wait for network idle after cookie selection
-                    page.wait_for_load_state("networkidle")
+                    await page.wait_for_load_state("networkidle")
                     print("Cookie modal closed and page settled")
                 else:
                     print("Reject button not found, trying alternative...")
                     # Alternative: click outside modal or use other buttons
                     close_btn = page.locator('[data-testid="bahf-cookie-disclaimer-btn-schliessen"]')
-                    if close_btn.is_visible():
-                        close_btn.click()
+                    if await close_btn.is_visible():
+                        await close_btn.click()
                         # Wait for network idle after closing
-                        page.wait_for_load_state("networkidle")
+                        await page.wait_for_load_state("networkidle")
                         print("Cookie modal closed via close button")
                         
         except Exception as e:
@@ -204,18 +204,18 @@ class JobURLScraper:
     async def handle_modals(self, page):
         """Handle cookie consent modal and connection error modal if they appear"""
         # Handle connection error modal first with infinite retry logic
-        self.handle_connection_error_modal(page)
+        await self.handle_connection_error_modal(page)
         
         # After connection is stable, handle cookie modal
-        self.handle_cookie_modal(page)
+        await self.handle_cookie_modal(page)
 
-    def check_and_handle_connection_during_scraping(self, page):
+    async def check_and_handle_connection_during_scraping(self, page):
         """Check for connection error modal during scraping and handle it"""
-        if page.locator('#modal[aria-label="Modaldialog"]').is_visible():
+        if await page.locator('#modal[aria-label="Modaldialog"]').is_visible():
             modal_title = page.locator('#modal-title:has-text("Keine Verbindung")')
-            if modal_title.is_visible():
+            if await modal_title.is_visible():
                 print("Connection modal detected during scraping, handling...")
-                self.handle_connection_error_modal(page)
+                await self.handle_connection_error_modal(page)
                 return True
         return False
 
@@ -257,9 +257,9 @@ class JobURLScraper:
                     print(f"Resuming from page {start_page}...")
                     for _ in range(start_page - 1):
                         load_more_btn = page.locator("#ergebnisliste-ladeweitere-button")
-                        if load_more_btn.is_visible():
-                            load_more_btn.click()
-                            page.wait_for_load_state("networkidle")
+                        if await load_more_btn.is_visible():
+                            await load_more_btn.click()
+                            await page.wait_for_load_state("networkidle")
                             time.sleep(0.5)
                         else:
                             print("Could not resume to previous page, starting fresh")
@@ -270,14 +270,14 @@ class JobURLScraper:
                     print(f"Scraping page {page_count}...")
                     
                     # Check for connection error before processing each page
-                    self.check_and_handle_connection_during_scraping(page)
+                    await self.check_and_handle_connection_during_scraping(page)
                     
                     # Get current job count before processing
                     current_job_count = len(all_job_urls)
                     
                     try:
                         # Extract URLs using JavaScript for better performance
-                        new_urls = page.evaluate("""
+                        new_urls = await page.evaluate("""
                             () => {
                                 const links = Array.from(document.querySelectorAll('a.ergebnisliste-item'));
                                 return links.map(link => link.href);
@@ -310,17 +310,17 @@ class JobURLScraper:
                     # Check for "Weitere Ergebnisse" button
                     load_more_btn = page.locator("#ergebnisliste-ladeweitere-button")
                     
-                    if load_more_btn.is_visible():
+                    if await load_more_btn.is_visible():
                         print("Clicking 'Weitere Ergebnisse'...")
                         
                         try:
-                            load_more_btn.click()
+                            await load_more_btn.click()
                             
                             # Wait for network idle
-                            page.wait_for_load_state("networkidle", timeout=30000)
+                            await page.wait_for_load_state("networkidle", timeout=30000)
                             
                             # Check for connection issues after clicking
-                            self.check_and_handle_connection_during_scraping(page)
+                            await self.check_and_handle_connection_during_scraping(page)
                             
                             # Small buffer for rendering
                             time.sleep(1)
@@ -329,7 +329,7 @@ class JobURLScraper:
                         except Exception as click_error:
                             print(f"Error clicking load more button: {click_error}")
                             # Check if it's a connection issue
-                            if self.check_and_handle_connection_during_scraping(page):
+                            if await self.check_and_handle_connection_during_scraping(page):
                                 print("Connection issue resolved, retrying click...")
                                 continue
                             else:
@@ -340,7 +340,7 @@ class JobURLScraper:
                         print("No more 'Weitere Ergebnisse' button - scraping complete!")
                         break
                 
-                browser.close()
+                await browser.close()
                 
                 processing_time = time.time() - start_time
                 print(f"\n=== SCRAPING COMPLETE ===")
