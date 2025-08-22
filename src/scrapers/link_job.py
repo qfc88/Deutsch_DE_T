@@ -4,7 +4,7 @@ import time
 import json
 import sys
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 # Add config path and import centralized settings
 sys.path.append(str(Path(__file__).parent.parent / "config"))
@@ -219,7 +219,7 @@ class JobURLScraper:
                 return True
         return False
 
-    def scrape_all_job_urls(self):
+    async def scrape_all_job_urls(self):
         """Scrape all job URLs from arbeitsagentur.de using pagination with recovery"""
         start_time = time.time()
         
@@ -237,15 +237,15 @@ class JobURLScraper:
         all_job_urls = existing_urls if existing_urls else set()
         
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=SCRAPER_SETTINGS.get('headless', True))
-                page = browser.new_page()
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=SCRAPER_SETTINGS.get('headless', True))
+                page = await browser.new_page()
                 
                 print(f"Navigating to: {self.url}")
-                page.goto(self.url)
+                await page.goto(self.url)
                 
                 # Wait for initial page load
-                page.wait_for_load_state("networkidle")
+                await page.wait_for_load_state("networkidle")
                 
                 # Handle modals if they appear (including infinite retry for connection errors)
                 self.handle_modals(page)
@@ -415,7 +415,7 @@ class JobURLScraper:
             print(f"No existing CSV found at '{csv_path}'")
             return None
     
-    def incremental_scrape(self):
+    async def incremental_scrape(self):
         """Re-scrape to find new jobs and update existing data"""
         print("Starting incremental scrape to find new jobs...")
         
@@ -428,10 +428,10 @@ class JobURLScraper:
             print(f"Found {len(existing_urls)} existing job URLs")
         else:
             print("No existing data found, performing full scrape...")
-            return self.run_scraping()
+            return await self.run_scraping()
         
         # Scrape current jobs
-        current_urls = self.scrape_all_job_urls()
+        current_urls = await self.scrape_all_job_urls()
         current_urls_set = set(current_urls)
         
         # Find new jobs
@@ -485,7 +485,7 @@ class JobURLScraper:
         except Exception as e:
             print(f"Failed to save update report: {e}")
     
-    def run_scraping(self):
+    async def run_scraping(self):
         """Main method to run the scraping process"""
         print("Starting job URL scraping...")
         
@@ -504,11 +504,11 @@ class JobURLScraper:
             if choice == '1':
                 return existing_df
             elif choice == '3':
-                return self.incremental_scrape()
+                return await self.incremental_scrape()
             # choice == '2' or any other input will continue to full scrape
         
         # Full scrape all job URLs
-        job_urls = self.scrape_all_job_urls()
+        job_urls = await self.scrape_all_job_urls()
         
         # Save to CSV
         df = self.save_job_urls_to_csv(job_urls)

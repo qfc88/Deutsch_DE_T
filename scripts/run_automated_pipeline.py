@@ -96,10 +96,10 @@ class AutomatedPipeline:
             existing_df = scraper.load_job_urls_from_csv()
             if existing_df is not None and len(existing_df) > 0:
                 logger.info(f"📋 Found {len(existing_df)} existing URLs, running incremental update")
-                df = scraper.incremental_scrape()
+                df = await scraper.incremental_scrape()
             else:
                 logger.info("🆕 No existing data, running full scrape")
-                df = scraper.run_scraping()
+                df = await scraper.run_scraping()
             
             if df is not None and len(df) > 0:
                 logger.info(f"✅ Phase 1 completed: {len(df)} job URLs collected")
