@@ -68,8 +68,9 @@ RUN playwright install-deps chromium || echo "Some deps may be missing but conti
 # Copy application code
 COPY . .
 
-# Create necessary directories
+# Create necessary directories with correct permissions
 RUN mkdir -p data/{input,output,temp,logs,backup} && \
+    chmod -R 777 data && \
     chown -R app:app /app
 
 # Switch to app user
