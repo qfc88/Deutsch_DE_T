@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     libcups2 \
     libdrm2 \
     libfontconfig1 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-2.0-0 \
     libgtk-3-0 \
     libnspr4 \
     libnss3 \
@@ -40,14 +40,12 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxi6 \
     libxfixes3 \
-    libgconf-2-4 \
     libxrender1 \
     libx11-xcb1 \
     libxcb-dri3-0 \
     libxcb1 \
     xdg-utils \
     lsb-release \
-    libappindicator1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user
