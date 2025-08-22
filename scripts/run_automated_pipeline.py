@@ -66,7 +66,7 @@ class AutomatedPipeline:
                 
                 db = DatabaseManager()
                 await db.connect()
-                await db.close()
+                await db.disconnect()
                 logger.info("✅ Database connection successful")
                 return True
                 
