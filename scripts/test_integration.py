@@ -96,7 +96,7 @@ class IntegrationTest:
         self.log_test_start("Database Connection")
         
         try:
-            from connection import init_database, close_database, db_manager
+            from database.connection import init_database, close_database, db_manager
             
             # Test connection
             connected = await init_database()
@@ -272,8 +272,8 @@ class IntegrationTest:
         self.log_test_start("Data Loader")
         
         try:
-            from data_loader import JobDataLoader
-            from connection import init_database, close_database
+            from database.data_loader import JobDataLoader
+            from database.connection import init_database, close_database
             
             # Initialize database
             connected = await init_database()

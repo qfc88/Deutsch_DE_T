@@ -15,8 +15,10 @@ from datetime import datetime
 
 # Add paths
 project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root / "src" / "config"))
 sys.path.append(str(project_root / "src"))
+sys.path.append(str(project_root / "src" / "config"))
+sys.path.append(str(project_root / "src" / "utils"))
+sys.path.append(str(project_root / "src" / "database"))
 
 try:
     from settings import *
@@ -60,7 +62,6 @@ class AutomatedPipeline:
         
         for attempt in range(max_attempts):
             try:
-                sys.path.append(str(project_root / "src" / "database"))
                 from connection import DatabaseManager
                 
                 db = DatabaseManager()
@@ -191,9 +192,9 @@ class AutomatedPipeline:
         logger.info("💾 DATABASE: Loading scraped data...")
         
         try:
-            from database.data_loader import DataLoader
+            from data_loader import JobDataLoader
             
-            loader = DataLoader()
+            loader = JobDataLoader()
             
             # Load main scraped jobs
             csv_path = Path(PATHS['output_dir']) / "scraped_jobs.csv"

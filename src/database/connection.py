@@ -335,6 +335,9 @@ class DatabaseManager:
 # Global database manager instance
 db_manager = DatabaseManager()
 
+# Backward compatibility alias in case something is looking for DatabaseConnection
+DatabaseConnection = DatabaseManager
+
 # Convenience functions for common operations
 async def init_database() -> bool:
     """Initialize database connection"""

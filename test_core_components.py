@@ -63,7 +63,7 @@ def test_database_connection():
     """Test database connection (without actually connecting)"""
     print("[TEST] Testing Database components...")
     try:
-        from connection import DatabaseManager
+        from database.connection import DatabaseManager
         dm = DatabaseManager()
         print(f"[PASS] Database manager initialized: {dm.host}:{dm.port}")
         return True

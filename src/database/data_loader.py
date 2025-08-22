@@ -21,7 +21,7 @@ sys.path.append(str(Path(__file__).parent))
 sys.path.append(str(Path(__file__).parent.parent / "config"))
 
 try:
-    from connection import db_manager, init_database, close_database
+    from .connection import db_manager, init_database, close_database
     # Try to import from config package
     sys.path.append(str(Path(__file__).parent.parent / "config"))
     from settings import DATABASE_SETTINGS, VALIDATION_SETTINGS, DATA_CLEANING_SETTINGS

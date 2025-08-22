@@ -44,7 +44,7 @@ except ImportError as e:
     )
 
 try:
-    from connection import init_database, close_database, db_manager
+    from database.connection import init_database, close_database, db_manager
     DATABASE_AVAILABLE = True
 except ImportError:
     DATABASE_AVAILABLE = False
