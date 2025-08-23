@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Automated Pipeline V2 - Clean & Complete Integration
-Enhanced pipeline with comprehensive data cleaning and single database load
-Scrape → Enhanced Validation → Complete Cleaning → Single DB Load
+Automated Pipeline Runner for Docker
+Runs the complete job scraper pipeline with automation and monitoring
 """
 
 import asyncio
@@ -13,7 +12,6 @@ import time
 import signal
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Optional
 
 # Add paths
 project_root = Path(__file__).parent.parent
@@ -28,29 +26,24 @@ except ImportError as e:
     print(f"[ERROR] Settings import failed: {e}")
     sys.exit(1)
 
-# Enhanced logging for V2
+# Enhanced logging for Docker
 logging.basicConfig(
     level=getattr(logging, LOGGING_SETTINGS.get('level', 'INFO')),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(Path(PATHS['logs_dir']) / 'automated_pipeline_v2.log')
+        logging.FileHandler(Path(PATHS['logs_dir']) / 'automated_pipeline.log')
     ]
 )
 logger = logging.getLogger(__name__)
 
-class AutomatedPipelineV2:
+class AutomatedPipeline:
     def __init__(self):
         self.running = True
         self.start_time = datetime.now()
         self.stats = {
             'phases_completed': 0,
             'total_jobs_processed': 0,
-            'total_jobs_cleaned': 0,
-            'total_jobs_loaded': 0,
-            'validation_failures': 0,
-            'cleaning_failures': 0,
-            'database_failures': 0,
             'errors': 0,
             'last_run': None
         }
@@ -65,7 +58,7 @@ class AutomatedPipelineV2:
     
     async def wait_for_database(self, max_attempts=30):
         """Wait for database to be ready"""
-        logger.info("[WAIT] Waiting for database connection...")
+        logger.info("🔄 Waiting for database connection...")
         
         for attempt in range(max_attempts):
             try:
@@ -89,7 +82,7 @@ class AutomatedPipelineV2:
     
     async def run_phase1_links(self):
         """Phase 1: Collect job URLs"""
-        logger.info("[PHASE1] Starting job URL collection...")
+        logger.info("🔗 PHASE 1: Starting job URL collection...")
         
         try:
             from scrapers.link_job import JobURLScraper
@@ -102,10 +95,10 @@ class AutomatedPipelineV2:
             # Check if we should skip if recent data exists
             existing_df = scraper.load_job_urls_from_csv()
             if existing_df is not None and len(existing_df) > 0:
-                logger.info(f"[INFO] Found {len(existing_df)} existing URLs, using them")
+                logger.info(f"📋 Found {len(existing_df)} existing URLs, skipping scrape for now")
                 df = existing_df
             else:
-                logger.info("[INFO] No existing data found")
+                logger.info("🆕 No existing data found")
                 # For now, skip scraping to avoid Playwright issues
                 logger.warning("[WARNING] Skipping scraping due to Playwright async conversion in progress")
                 return 0
@@ -122,12 +115,12 @@ class AutomatedPipelineV2:
             self.stats['errors'] += 1
             return 0
     
-    async def run_phase2_enhanced_scraping(self):
-        """Phase 2: Enhanced scraping with comprehensive validation and cleaning"""
-        logger.info("[PHASE2] Starting enhanced job scraping with clean integration...")
+    async def run_phase2_details(self):
+        """Phase 2: Scrape job details"""
+        logger.info("📄 PHASE 2: Starting job details scraping...")
         
         try:
-            from scrapers.job_scraper_v2 import JobScraperV2
+            from scrapers.job_scraper import JobScraper
             
             # Check if input file exists
             input_path = Path(PATHS['input_csv'])
@@ -135,59 +128,27 @@ class AutomatedPipelineV2:
                 logger.error("[ERROR] Input file not found, Phase 1 must complete first")
                 return 0
             
-            # Initialize V2 scraper with enhanced settings
+            # Initialize with automation settings
             auto_solve = os.getenv('AUTO_SOLVE_CAPTCHA', 'true').lower() == 'true'
-            enable_realtime_enhancement = os.getenv('ENABLE_REALTIME_ENHANCEMENT', 'true').lower() == 'true'
-            
-            scraper = JobScraperV2(
-                auto_solve_captcha=auto_solve,
-                enable_comprehensive_validation=True,
-                enable_enhanced_cleaning=True,
-                enable_single_db_load=True,
-                enable_realtime_enhancement=enable_realtime_enhancement
-            )
+            scraper = JobScraper(auto_solve_captcha=auto_solve)
             
             # Load existing progress for resume
             existing_jobs = await scraper.load_existing_progress()
             resume = existing_jobs is not None and len(existing_jobs) > 0
             
             if resume:
-                logger.info(f"[RESUME] Resuming from {len(existing_jobs)} existing jobs")
+                logger.info(f"🔄 Resuming from {len(existing_jobs)} existing jobs")
             
-            # Run enhanced scraping
-            logger.info("[START] Starting enhanced scraping with:")
-            logger.info("   [FEATURE] Comprehensive validation")
-            logger.info("   [FEATURE] Enhanced data cleaning")
-            logger.info("   [FEATURE] Single database load")
-            logger.info("   [FEATURE] No duplicate loading")
-            if enable_realtime_enhancement:
-                logger.info("   [FEATURE] Realtime contact enhancement")
-            else:
-                logger.info("   [WARNING] Realtime enhancement disabled")
-            
-            result = await scraper.run_enhanced(
+            # Run scraping
+            await scraper.run(
                 input_csv_path=str(input_path),
                 resume=resume,
                 auto_solve_captcha=auto_solve
             )
             
-            # Update statistics
-            self.stats['total_jobs_processed'] = result.get('scraped_count', 0)
-            self.stats['total_jobs_cleaned'] = result.get('cleaned_count', 0)
-            self.stats['total_jobs_loaded'] = result.get('loaded_count', 0)
-            self.stats['validation_failures'] = result.get('validation_failures', 0)
-            self.stats['cleaning_failures'] = result.get('cleaning_failures', 0)
-            self.stats['database_failures'] = result.get('database_failures', 0)
-            
-            logger.info(f"[SUCCESS] Phase 2 completed:")
-            logger.info(f"   📊 Jobs scraped: {result.get('scraped_count', 0)}")
-            logger.info(f"   🧹 Jobs cleaned: {result.get('cleaned_count', 0)}")
-            logger.info(f"   💾 Jobs loaded to DB: {result.get('loaded_count', 0)}")
-            logger.info(f"   ❌ Validation failures: {result.get('validation_failures', 0)}")
-            logger.info(f"   🔧 Cleaning failures: {result.get('cleaning_failures', 0)}")
-            logger.info(f"   💥 Database failures: {result.get('database_failures', 0)}")
-            
-            return result.get('loaded_count', 0)
+            total_scraped = scraper.scraped_count
+            logger.info(f"[SUCCESS] Phase 2 completed: {total_scraped} jobs scraped, {scraper.failed_count} failed")
+            return total_scraped
             
         except Exception as e:
             logger.error(f"[ERROR] Phase 2 error: {e}")
@@ -195,24 +156,23 @@ class AutomatedPipelineV2:
             return 0
     
     async def run_phase3_contacts(self):
-        """Phase 3: Enhanced contact extraction for remaining missing contacts"""
-        logger.info("[PHASE3] Starting contact enhancement for remaining gaps...")
+        """Phase 3: Enhanced contact extraction"""
+        logger.info("📞 PHASE 3: Starting contact enhancement...")
         
         try:
             # Import and run the contact enhancement
             sys.path.append(str(project_root / "scripts"))
             from process_missing_emails import load_missing_jobs, process_contact_enhancement, save_enhanced_results
             
-            # Load jobs still missing contacts after enhanced cleaning
             missing_jobs = await load_missing_jobs()
             if not missing_jobs:
-                logger.info("[SUCCESS] Phase 3 skipped: No remaining missing contacts after enhanced cleaning")
+                logger.info("[SUCCESS] Phase 3 skipped: No missing contacts to enhance")
                 return 0
             
             # Limit processing in automation mode to prevent long runs
-            max_jobs = min(len(missing_jobs), 50)  # Reduced since V2 should have fewer gaps
+            max_jobs = min(len(missing_jobs), 100)  # Process up to 100 jobs
             
-            logger.info(f"[PROCESS] Processing {max_jobs} remaining jobs for contact enhancement")
+            logger.info(f"🔍 Processing {max_jobs} jobs for contact enhancement")
             enhanced_jobs = await process_contact_enhancement(missing_jobs, max_jobs)
             
             if enhanced_jobs:
@@ -229,11 +189,40 @@ class AutomatedPipelineV2:
             self.stats['errors'] += 1
             return 0
     
-    async def run_full_pipeline_v2(self):
-        """Run the complete V2 automated pipeline with enhanced integration"""
-        logger.info("[START] Starting V2 automated job scraper pipeline...")
-        logger.info("[INFO] V2 Features: Enhanced validation + Comprehensive cleaning + Single DB load")
-        logger.info(f"[CONFIG] Configuration: batch_size={SCRAPER_SETTINGS['batch_size']}, headless={SCRAPER_SETTINGS.get('headless', True)}")
+    async def run_database_operations(self):
+        """Load data into database from JSON batch files"""
+        logger.info("💾 DATABASE: Loading scraped data...")
+        
+        try:
+            from data_loader import JobDataLoader
+            
+            loader = JobDataLoader()
+            
+            # Find latest session directory with batch files
+            output_dir = Path(PATHS['output_dir'])
+            session_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
+            if session_dirs:
+                latest_session = max(session_dirs, key=lambda x: x.name)
+                logger.info(f"📁 Found session directory: {latest_session.name}")
+                
+                # Load batch files from latest session
+                result = await loader.load_batch_files(str(latest_session))
+                loaded_count = result.get('loaded', 0)
+                logger.info(f"✅ Database loading completed: {loaded_count} jobs loaded from batch files")
+                return loaded_count
+            else:
+                logger.warning("⚠️ No session directories found for database loading")
+                return 0
+                
+        except Exception as e:
+            logger.error(f"[ERROR] Database loading error: {e}")
+            self.stats['errors'] += 1
+            return 0
+    
+    async def run_full_pipeline(self):
+        """Run the complete automated pipeline"""
+        logger.info("🚀 Starting automated job scraper pipeline...")
+        logger.info(f"📊 Configuration: batch_size={SCRAPER_SETTINGS['batch_size']}, headless={SCRAPER_SETTINGS.get('headless', True)}")
         
         # Wait for database
         if not await self.wait_for_database():
@@ -248,47 +237,48 @@ class AutomatedPipelineV2:
                 urls_collected = await self.run_phase1_links()
                 if urls_collected > 0:
                     self.stats['phases_completed'] += 1
+                    self.stats['total_jobs_processed'] += urls_collected
             
-            # Phase 2: Enhanced scraping with integrated cleaning and DB loading
+            # Phase 2: Scrape details
             if self.running:
-                jobs_loaded = await self.run_phase2_enhanced_scraping()
-                if jobs_loaded >= 0:  # 0 is valid (no jobs to process)
+                jobs_scraped = await self.run_phase2_details()
+                if jobs_scraped > 0:
                     self.stats['phases_completed'] += 1
+                    self.stats['total_jobs_processed'] += jobs_scraped
             
-            # Phase 3: Contact enhancement for remaining gaps only
+            # Phase 3: Contact enhancement
             if self.running:
                 contacts_enhanced = await self.run_phase3_contacts()
                 if contacts_enhanced >= 0:  # 0 is valid (no enhancement needed)
                     self.stats['phases_completed'] += 1
             
-            # No separate Phase 4 - database loading is integrated in Phase 2
+            # Database operations
+            if self.running:
+                db_loaded = await self.run_database_operations()
+                if db_loaded > 0:
+                    logger.info(f"💾 {db_loaded} records loaded into database")
             
             pipeline_duration = time.time() - pipeline_start
             
             # Final report
             self.stats['last_run'] = datetime.now().isoformat()
             
-            logger.info("[SUCCESS] V2 PIPELINE COMPLETED SUCCESSFULLY!")
-            logger.info(f"[SUMMARY] Enhanced Summary:")
-            logger.info(f"   [TIME] Duration: {pipeline_duration:.1f} seconds")
-            logger.info(f"   [SUCCESS] Phases completed: {self.stats['phases_completed']}/3")
-            logger.info(f"   [STATS] Jobs scraped: {self.stats['total_jobs_processed']}")
-            logger.info(f"   [STATS] Jobs cleaned: {self.stats['total_jobs_cleaned']}")
-            logger.info(f"   [DATABASE] Jobs in database: {self.stats['total_jobs_loaded']}")
-            logger.info(f"   [ERROR] Validation failures: {self.stats['validation_failures']}")
-            logger.info(f"   [ERROR] Cleaning failures: {self.stats['cleaning_failures']}")
-            logger.info(f"   [ERROR] Database failures: {self.stats['database_failures']}")
-            logger.info(f"   [ERROR] Total errors: {self.stats['errors']}")
+            logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
+            logger.info(f"📊 Summary:")
+            logger.info(f"   [TIME]  Duration: {pipeline_duration:.1f} seconds")
+            logger.info(f"   [SUCCESS] Phases completed: {self.stats['phases_completed']}/4")
+            logger.info(f"   📋 Jobs processed: {self.stats['total_jobs_processed']}")
+            logger.info(f"   [ERROR] Errors: {self.stats['errors']}")
             
             return self.stats['errors'] == 0
             
         except Exception as e:
-            logger.error(f"[ERROR] V2 Pipeline failed: {e}")
+            logger.error(f"[ERROR] Pipeline failed: {e}")
             return False
     
     async def run_continuous_mode(self):
-        """Run V2 pipeline in continuous mode with scheduling"""
-        logger.info("[CONTINUOUS] Starting V2 continuous automation mode...")
+        """Run pipeline in continuous mode with scheduling"""
+        logger.info("🔄 Starting continuous automation mode...")
         
         # Run interval from environment or default to 6 hours
         interval_hours = int(os.getenv('PIPELINE_INTERVAL_HOURS', '6'))
@@ -296,48 +286,48 @@ class AutomatedPipelineV2:
         
         while self.running:
             try:
-                logger.info(f"[SCHEDULE] Starting scheduled V2 pipeline run (interval: {interval_hours}h)")
-                success = await self.run_full_pipeline_v2()
+                logger.info(f"🚀 Starting scheduled pipeline run (interval: {interval_hours}h)")
+                success = await self.run_full_pipeline()
                 
                 if success:
-                    logger.info(f"[SUCCESS] Scheduled V2 run completed successfully")
+                    logger.info(f"[SUCCESS] Scheduled run completed successfully")
                 else:
-                    logger.warning(f"[WARNING] Scheduled V2 run completed with errors")
+                    logger.warning(f"[WARNING] Scheduled run completed with errors")
                 
                 if self.running:
-                    logger.info(f"[WAIT] Sleeping for {interval_hours} hours until next run...")
+                    logger.info(f"😴 Sleeping for {interval_hours} hours until next run...")
                     await asyncio.sleep(interval_seconds)
                     
             except asyncio.CancelledError:
-                logger.info("[CANCEL] V2 Continuous mode cancelled")
+                logger.info("🛑 Continuous mode cancelled")
                 break
             except Exception as e:
-                logger.error(f"[ERROR] Error in V2 continuous mode: {e}")
+                logger.error(f"[ERROR] Error in continuous mode: {e}")
                 if self.running:
-                    logger.info("[RETRY] Retrying in 30 minutes...")
+                    logger.info("🔄 Retrying in 30 minutes...")
                     await asyncio.sleep(1800)  # Wait 30 minutes before retry
 
 async def main():
-    """Main entry point for V2 pipeline"""
-    pipeline = AutomatedPipelineV2()
+    """Main entry point"""
+    pipeline = AutomatedPipeline()
     
     # Check if continuous mode is requested
     continuous = os.getenv('CONTINUOUS_MODE', 'false').lower() == 'true'
     
     if continuous:
-        logger.info("[MODE] Running V2 in continuous mode")
+        logger.info("🔄 Running in continuous mode")
         await pipeline.run_continuous_mode()
     else:
-        logger.info("[MODE] Running single V2 pipeline execution")
-        success = await pipeline.run_full_pipeline_v2()
+        logger.info("⚡ Running single pipeline execution")
+        success = await pipeline.run_full_pipeline()
         sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("[INTERRUPT] V2 Pipeline interrupted by user")
+        logger.info("🛑 Pipeline interrupted by user")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"[ERROR] V2 Fatal error: {e}")
+        logger.error(f"[ERROR] Fatal error: {e}")
         sys.exit(1)

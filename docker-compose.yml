@@ -33,9 +33,9 @@ services:
       # Database configuration
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: scrape
-      DB_USER: postgres
-      DB_PASSWORD: myass
+      DB_NAME: job_market_data
+      DB_USER: jobscraper
+      DB_PASSWORD: working
       
       # Application configuration
       ENVIRONMENT: production

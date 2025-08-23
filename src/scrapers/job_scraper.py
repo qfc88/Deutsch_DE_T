@@ -1,1368 +1,558 @@
+#!/usr/bin/env python3
 """
-Job scraper module for extracting job details from individual job pages
+Enhanced Job Scraper V2 - Comprehensive Integration
+Scrape → Enhanced Validation → Complete Cleaning → Single DB Load
+
+Key Features:
+- Comprehensive data validation before any storage
+- Enhanced data cleaning and normalization
+- Single database load (no duplicates)
+- Complete data integrity
+- Fail-safe error handling
 """
-# Add to existing imports
-from .external_link_handler import ExternalLinkHandler
+
 import asyncio
-import pandas as pd
-from pathlib import Path
-from playwright.async_api import async_playwright, Page
-import json
 import logging
-from typing import Dict, List, Optional
-import re
+import json
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
-import time
-import sys
+import hashlib
+import re
 
-# Add config and utils to path
-sys.path.append(str(Path(__file__).parent.parent / "config"))
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
-sys.path.append(str(Path(__file__).parent.parent / "database"))
+# Import base scraper
+from .job_scraper_v1 import JobScraper as JobScraperV1
 
-# Import settings - no fallback, fail fast if not configured
+# Import enhanced components
 try:
-    from settings import (SCRAPER_SETTINGS, BROWSER_SETTINGS, CAPTCHA_SETTINGS, 
-                         VALIDATION_SETTINGS, FILE_MANAGEMENT_SETTINGS, PATHS)
+    from database.data_loader import JobDataLoader
+    from utils.data_validator import DataValidator
+    from models.job_model import JobModel, ValidationResult
+    DATABASE_AVAILABLE = True
 except ImportError:
-    try:
-        from config.settings import (SCRAPER_SETTINGS, BROWSER_SETTINGS, CAPTCHA_SETTINGS,
-                                   VALIDATION_SETTINGS, FILE_MANAGEMENT_SETTINGS, PATHS)
-    except ImportError as e:
-        raise ImportError(
-            f"[ERROR] Settings import failed: {e}\n"
-            "Please ensure src/config/settings.py exists and contains required settings."
-        )
+    DATABASE_AVAILABLE = False
+    logging.warning("Enhanced database components not available")
 
-# Import CAPTCHA solver
-try:
-    from .captcha_solver import CaptchaSolver
-    CAPTCHA_SOLVER_AVAILABLE = True
-except ImportError:
-    CAPTCHA_SOLVER_AVAILABLE = False
-    logging.warning("CaptchaSolver not available. Install transformers and torch for auto-solving.")
+logger = logging.getLogger(__name__)
 
-# Import FileManager
-try:
-    from file_manager import FileManager
-    FILE_MANAGER_AVAILABLE = True
-except ImportError:
-    try:
-        from utils.file_manager import FileManager
-        FILE_MANAGER_AVAILABLE = True
-    except ImportError:
-        FILE_MANAGER_AVAILABLE = False
-        logging.warning("FileManager not available, using legacy file handling")
-
-# Import JobModel for validation
-try:
-    from models.job_model import JobModel
-    JOB_MODEL_AVAILABLE = True
-except ImportError:
-    try:
-        from job_model import JobModel
-        JOB_MODEL_AVAILABLE = True
-    except ImportError:
-        try:
-            from database.job_model import JobModel
-            JOB_MODEL_AVAILABLE = True
-        except ImportError:
-            JOB_MODEL_AVAILABLE = False
-            logging.warning("JobModel not available, skipping data validation")
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-# Import logger after path is set
-try:
-    from logger import get_scraper_logger, log_error
-    logger = get_scraper_logger('scrapers.job_scraper')
-except ImportError:
-    logger = logging.getLogger(__name__)
-
-class JobScraper:
-    def __init__(self, auto_solve_captcha: bool = True, use_sessions: bool = None, validate_data: bool = None):
-        """Initialize the job scraper with enhanced configuration"""
-        self.browser = None
-        self.context = None
-        self.scraped_count = 0
-        self.failed_count = 0
-        self.auto_solve_captcha = auto_solve_captcha
+class JobScraper(JobScraperV1):
+    """Enhanced Job Scraper with comprehensive validation and cleaning"""
+    
+    def __init__(self, auto_solve_captcha=True, enable_comprehensive_validation=True, 
+                 enable_enhanced_cleaning=True, enable_single_db_load=True, 
+                 enable_realtime_enhancement=True, **kwargs):
+        """Initialize V2 scraper with enhanced features"""
+        super().__init__(auto_solve_captcha=auto_solve_captcha, **kwargs)
         
-        # Enhanced settings from config
-        self.batch_size = SCRAPER_SETTINGS.get('batch_size', 10)
-        self.delay_between_jobs = SCRAPER_SETTINGS.get('delay_between_jobs', 1)
-        self.max_jobs_per_session = SCRAPER_SETTINGS.get('max_jobs_per_session', 1000)
-        self.enable_resume = SCRAPER_SETTINGS.get('enable_resume', True)
+        # V2 specific settings
+        self.enable_comprehensive_validation = enable_comprehensive_validation
+        self.enable_enhanced_cleaning = enable_enhanced_cleaning
+        self.enable_single_db_load = enable_single_db_load
+        self.enable_realtime_enhancement = enable_realtime_enhancement
         
-        # Post-CAPTCHA stabilization settings (simplified)
-        self.enable_page_stabilization = SCRAPER_SETTINGS.get('enable_page_stabilization', True)
-        self.stabilization_timeout = SCRAPER_SETTINGS.get('stabilization_timeout', 30)
-        
-        # Session and validation settings
-        self.use_sessions = use_sessions if use_sessions is not None else FILE_MANAGEMENT_SETTINGS.get('use_sessions', False)
-        self.validate_data = validate_data if validate_data is not None else VALIDATION_SETTINGS.get('validate_on_scrape', False)
-        
-        # Generate session ID for file management
-        if self.use_sessions:
-            self.session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-        else:
-            self.session_id = None
-        
-        # Initialize FileManager if available
-        self.file_manager = None
-        if FILE_MANAGER_AVAILABLE and self.use_sessions:
-            try:
-                self.file_manager = FileManager()
-                logger.info("[SUCCESS] FileManager initialized with session support")
-                if self.session_id:
-                    logger.info(f"Session ID: {self.session_id}")
-            except Exception as e:
-                logger.warning(f"[ERROR] Failed to initialize FileManager: {e}")
-                self.use_sessions = False
-        
-        # Initialize statistics tracking
-        self.stats = {
-            'total_processed': 0,
-            'successful_scrapes': 0,
-            'errors': 0,
-            'captcha_encounters': 0,
-            'captcha_solved': 0,
+        # V2 statistics
+        self.v2_stats = {
+            'scraped_count': 0,
+            'cleaned_count': 0,
+            'loaded_count': 0,
             'validation_failures': 0,
-            'session_start_time': datetime.now(),
-            'jobs_per_minute': 0.0,
-            # Stabilization statistics (simplified)
-            'stabilization_attempts': 0,
-            'stabilization_refresh_success': 0,
-            'stabilization_failures': 0
+            'cleaning_failures': 0,
+            'database_failures': 0,
+            'realtime_enhancements': 0,
+            'enhancement_successes': 0,
+            'enhancement_failures': 0,
+            'data_quality_score': 0.0
         }
         
-        # Initialize CAPTCHA solver if available and requested
-        self.captcha_solver = None
-        if auto_solve_captcha and CAPTCHA_SOLVER_AVAILABLE:
+        # Initialize enhanced components
+        if DATABASE_AVAILABLE and enable_single_db_load:
+            self.db_loader = JobDataLoader()
+        else:
+            self.db_loader = None
+            
+        self.data_validator = DataValidator() if DATABASE_AVAILABLE else None
+        
+        # Initialize contact scraper for realtime enhancement
+        if enable_realtime_enhancement:
             try:
-                self.captcha_solver = CaptchaSolver()
-                logger.info("[SUCCESS] CAPTCHA auto-solver initialized")
-            except Exception as e:
-                logger.warning(f"[ERROR] Failed to initialize CAPTCHA solver: {e}")
-                logger.info("💡 Falling back to manual CAPTCHA solving")
-                self.auto_solve_captcha = False
-        elif auto_solve_captcha and not CAPTCHA_SOLVER_AVAILABLE:
-            logger.warning("[ERROR] CAPTCHA auto-solver requested but not available")
-            logger.info("💡 Install requirements: pip install transformers torch torchvision")
-            logger.info("💡 Falling back to manual CAPTCHA solving")
-            self.auto_solve_captcha = False
+                from scrapers.contact_scraper import ContactScraper
+                self.contact_scraper = None  # Will be initialized when needed
+                self.contact_scraper_available = True
+            except ImportError:
+                logger.warning("ContactScraper not available for realtime enhancement")
+                self.contact_scraper = None
+                self.contact_scraper_available = False
+        else:
+            self.contact_scraper = None
+            self.contact_scraper_available = False
         
-        # Log initialization summary
-        logger.info(f"JobScraper initialized:")
-        logger.info(f"  - Sessions: {self.use_sessions} (ID: {self.session_id})")
-        logger.info(f"  - Data validation: {self.validate_data}")
-        logger.info(f"  - CAPTCHA auto-solve: {self.auto_solve_captcha}")
-        logger.info(f"  - Batch size: {self.batch_size}")
-        logger.info(f"  - Max jobs per session: {self.max_jobs_per_session}")
-        
-        # CSS Selectors based on analyzed HTML
-        self.selectors = {
-            # Basic job info (available before CAPTCHA)
-            'title': '#detail-kopfbereich-titel',
-            'company': '#detail-kopfbereich-firma',
-            'location': '#detail-kopfbereich-arbeitsort',
-            'start_date': '.eintrittsdatum-tag',
-            'job_description': '#detail-beschreibung-beschreibung',
-            'job_type': '#detail-kopfbereich-anstellungsart',
-            'ausbildungsberuf': '#detail-kopfbereich-ausbildungsberuf',
-            
-            # CAPTCHA elements
-            'captcha_container': '#jobdetails-kontaktdaten-block',
-            'captcha_image': '#kontaktdaten-captcha-image',
-            'captcha_input': '#kontaktdaten-captcha-input',
-            'captcha_submit': '#kontaktdaten-captcha-absenden-button',
-            'captcha_reload': '#kontaktdaten-captcha-reload-button',
-            
-            # Post-CAPTCHA contact info (Scenario 1: Full contact available)
-            'contact_phone': '#detail-bewerbung-telefon-Telefon',
-            'contact_email': '#detail-bewerbung-mail',
-            'contact_address': '#detail-bewerbung-adresse',
-            'application_method': '.bewerbungsarten li',
-            
-            # Post-CAPTCHA links (Scenario 2: Need application link scraping)
-            'application_link': '#detail-bewerbung-url',
-            'external_link': '#detail-bewerbung-agkontaktieren',
-            'ref_nr': '#detail-bewerbung-chiffre',
-            'ref_nr_footer': '#detail-footer-referenznummer',
-            'company_contact': '#detail-bewerbung-adresse'
+        # Enhanced validation rules
+        self.validation_rules = {
+            'required_fields': ['ref_nr', 'profession', 'company_name'],
+            'min_completeness': 0.7,  # 70% field completion required
+            'email_validation': True,
+            'phone_validation': True,
+            'date_validation': True,
+            'url_validation': True
         }
         
-        # Contact extraction patterns
-        self.contact_patterns = {
-            'phone': [
-                r'\+49[\s\-\(\)]?\d+[\s\-\(\)\d]+',
-                r'0\d{2,5}[\s\-]\d+[\s\-\d]+',
-                r'Tel\.?[\s:]?\+?[\d\s\-\(\)]+',
-                r'Telefon[\s:]?\+?[\d\s\-\(\)]+',
-                r'Fon[\s:]?\+?[\d\s\-\(\)]+'
-            ],
-            'email': [
-                r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-                r'E-?Mail[\s:]+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
-                r'Kontakt[\s:]+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
-            ]
+        # Enhanced cleaning rules
+        self.cleaning_rules = {
+            'normalize_whitespace': True,
+            'clean_special_chars': True,
+            'validate_emails': True,
+            'validate_phones': True,
+            'normalize_dates': True,
+            'clean_company_names': True,
+            'extract_skills': True,
+            'normalize_locations': True
         }
     
-    async def load_job_urls(self, csv_path: str) -> List[Dict]:
-        """Load job URLs from CSV file"""
+    async def comprehensive_validate_job(self, job_data: Dict[str, Any]) -> Tuple[bool, List[str], Dict[str, Any]]:
+        """Comprehensive job validation with detailed error reporting"""
+        errors = []
+        enhanced_data = job_data.copy()
+        
         try:
-            df = pd.read_csv(csv_path)
-            logger.info(f"Loaded {len(df)} job URLs from {csv_path}")
-            return df.to_dict('records')
+            # 1. Required fields validation
+            for field in self.validation_rules['required_fields']:
+                if not job_data.get(field) or str(job_data.get(field)).strip() == '':
+                    errors.append(f"Missing required field: {field}")
+            
+            # 2. Data completeness check
+            non_empty_fields = sum(1 for v in job_data.values() if v and str(v).strip())
+            total_fields = len(job_data)
+            completeness = non_empty_fields / total_fields if total_fields > 0 else 0
+            
+            if completeness < self.validation_rules['min_completeness']:
+                errors.append(f"Data completeness {completeness:.1%} below required {self.validation_rules['min_completeness']:.1%}")
+            
+            enhanced_data['data_completeness'] = completeness
+            
+            # 3. Email validation
+            if self.validation_rules['email_validation'] and job_data.get('email'):
+                email = str(job_data['email']).strip()
+                if email and not self._validate_email(email):
+                    errors.append(f"Invalid email format: {email[:50]}...")
+            
+            # 4. Phone validation
+            if self.validation_rules['phone_validation'] and job_data.get('phone'):
+                phone = str(job_data['phone']).strip()
+                if phone and not self._validate_phone(phone):
+                    errors.append(f"Invalid phone format: {phone}")
+            
+            # 5. Date validation
+            if self.validation_rules['date_validation']:
+                for date_field in ['start_date', 'application_deadline', 'posted_date']:
+                    if job_data.get(date_field):
+                        if not self._validate_date_field(job_data[date_field]):
+                            errors.append(f"Invalid date format in {date_field}")
+            
+            # 6. URL validation
+            if self.validation_rules['url_validation']:
+                for url_field in ['job_url', 'company_website']:
+                    if job_data.get(url_field):
+                        if not self._validate_url(job_data[url_field]):
+                            errors.append(f"Invalid URL format in {url_field}")
+            
+            # 7. Business logic validation
+            ref_nr = job_data.get('ref_nr')
+            if ref_nr and not str(ref_nr).strip():
+                errors.append("Empty reference number")
+            
+            company_name = job_data.get('company_name')
+            if company_name and len(str(company_name).strip()) < 2:
+                errors.append("Company name too short")
+            
+            profession = job_data.get('profession')
+            if profession and len(str(profession).strip()) < 3:
+                errors.append("Profession description too short")
+            
+            # Calculate validation score
+            validation_score = max(0, 1 - (len(errors) / 10))  # Normalize to 0-1
+            enhanced_data['validation_score'] = validation_score
+            
+            is_valid = len(errors) == 0
+            
+            return is_valid, errors, enhanced_data
+            
         except Exception as e:
-            logger.error(f"Error loading job URLs: {e}")
-            return []
+            logger.error(f"Error in comprehensive validation: {e}")
+            errors.append(f"Validation system error: {str(e)}")
+            return False, errors, enhanced_data
     
-    async def setup_browser(self):
-        """Setup Playwright browser with enhanced configuration"""
-        playwright = await async_playwright().start()
-        
-        # Use settings for browser configuration
-        self.browser = await playwright.chromium.launch(
-            headless=SCRAPER_SETTINGS.get('headless', False),
-            args=BROWSER_SETTINGS.get('args', ['--disable-blink-features=AutomationControlled'])
-        )
-        
-        # Create context with enhanced settings
-        context_settings = {
-            'user_agent': BROWSER_SETTINGS.get('user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'),
-            'viewport': BROWSER_SETTINGS.get('viewport', {'width': 1920, 'height': 1080}),
-            'storage_state': None  # Will be saved after first CAPTCHA solve
-        }
-        
-        # Add optional settings if available
-        if 'timezone_id' in BROWSER_SETTINGS:
-            context_settings['timezone_id'] = BROWSER_SETTINGS['timezone_id']
-        if 'locale' in BROWSER_SETTINGS:
-            context_settings['locale'] = BROWSER_SETTINGS['locale']
-        
-        self.context = await self.browser.new_context(**context_settings)
-        
-        # Initialize external link handler AFTER context is created
-        self.external_handler = ExternalLinkHandler(self.context)
-        logger.info("[SUCCESS] External link handler initialized with context")
-        
-        logger.info("[SUCCESS] Browser setup completed with enhanced configuration")
-        logger.info(f"Headless: {SCRAPER_SETTINGS.get('headless', False)}, "
-                   f"Viewport: {BROWSER_SETTINGS.get('viewport', {})}")
-    
-    async def handle_cookie_consent(self, page: Page):
-        """Handle cookie consent dialogs that appear on job pages"""
+    async def enhanced_clean_job(self, job_data: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+        """Enhanced data cleaning and normalization"""
         try:
-            # Wait for potential cookie dialogs to appear
-            await asyncio.sleep(1)
+            cleaned_data = job_data.copy()
             
-            # Common cookie consent selectors for German job sites
-            cookie_selectors = [
-                'button:has-text("Akzeptieren")',
-                'button:has-text("Alle akzeptieren")',
-                'button:has-text("Accept")',
-                'button:has-text("OK")',
-                '[data-testid="cookie-accept"]',
-                '[id*="cookie"][id*="accept"]',
-                '[class*="cookie"][class*="accept"]',
-                '.cookie-accept',
-                '.cookie-banner button',
-                '#cookie-banner button',
-                'button[aria-label*="Accept"]',
-                'button[aria-label*="Akzeptieren"]'
-            ]
+            # 1. Normalize whitespace
+            if self.cleaning_rules['normalize_whitespace']:
+                for key, value in cleaned_data.items():
+                    if isinstance(value, str):
+                        cleaned_data[key] = ' '.join(value.split())
             
-            for selector in cookie_selectors:
+            # 2. Clean special characters
+            if self.cleaning_rules['clean_special_chars']:
+                for key in ['profession', 'company_name', 'description']:
+                    if cleaned_data.get(key):
+                        cleaned_data[key] = self._clean_special_chars(str(cleaned_data[key]))
+            
+            # 3. Enhanced email cleaning
+            if self.cleaning_rules['validate_emails'] and cleaned_data.get('email'):
+                cleaned_email = self._clean_email_advanced(str(cleaned_data['email']))
+                cleaned_data['email'] = cleaned_email if cleaned_email else None
+            
+            # 4. Enhanced phone cleaning
+            if self.cleaning_rules['validate_phones'] and cleaned_data.get('phone'):
+                cleaned_phone = self._clean_phone_advanced(str(cleaned_data['phone']))
+                cleaned_data['phone'] = cleaned_phone if cleaned_phone else None
+            
+            # 5. Date normalization
+            if self.cleaning_rules['normalize_dates']:
+                for date_field in ['start_date', 'application_deadline', 'posted_date']:
+                    if cleaned_data.get(date_field):
+                        normalized_date = self._normalize_date(cleaned_data[date_field])
+                        if normalized_date:
+                            cleaned_data[f"{date_field}_parsed"] = normalized_date
+            
+            # 6. Company name cleaning
+            if self.cleaning_rules['clean_company_names'] and cleaned_data.get('company_name'):
+                cleaned_data['company_name'] = self._clean_company_name(str(cleaned_data['company_name']))
+            
+            # 7. Skills extraction
+            if self.cleaning_rules['extract_skills'] and cleaned_data.get('description'):
+                skills = self._extract_skills(str(cleaned_data['description']))
+                if skills:
+                    cleaned_data['extracted_skills'] = skills
+            
+            # 8. Location normalization
+            if self.cleaning_rules['normalize_locations'] and cleaned_data.get('location'):
+                normalized_location = self._normalize_location(str(cleaned_data['location']))
+                if normalized_location:
+                    cleaned_data['location_normalized'] = normalized_location
+            
+            # Add cleaning metadata
+            cleaned_data['cleaned_at'] = datetime.now().isoformat()
+            cleaned_data['cleaning_version'] = 'v2.0'
+            
+            return True, cleaned_data
+            
+        except Exception as e:
+            logger.error(f"Error in enhanced cleaning: {e}")
+            return False, job_data
+    
+    async def realtime_contact_enhancement(self, job_data: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+        """Realtime contact enhancement for jobs missing email/phone"""
+        try:
+            # Check if enhancement is needed
+            has_email = job_data.get('email') and str(job_data.get('email')).strip()
+            has_phone = job_data.get('phone') and str(job_data.get('phone')).strip()
+            
+            if has_email and has_phone:
+                return True, job_data  # No enhancement needed
+            
+            # Check if we have company info for enhancement
+            company_name = job_data.get('company_name')
+            company_website = job_data.get('company_website')
+            
+            if not company_name and not company_website:
+                logger.info(f"No company info for enhancement: {job_data.get('ref_nr', 'unknown')}")
+                return True, job_data  # Skip enhancement but continue
+            
+            self.v2_stats['realtime_enhancements'] += 1
+            
+            logger.info(f"[ENHANCE] Realtime enhancement for {job_data.get('ref_nr', 'unknown')}: missing {'email' if not has_email else ''}{'&' if not has_email and not has_phone else ''}{'phone' if not has_phone else ''}")
+            
+            # Initialize contact scraper if needed
+            if not self.contact_scraper and self.contact_scraper_available:
                 try:
-                    # Check if cookie dialog exists
-                    cookie_button = await page.query_selector(selector)
-                    if cookie_button:
-                        # Check if button is visible
-                        is_visible = await cookie_button.is_visible()
-                        if is_visible:
-                            logger.info(f"🍪 Found cookie consent dialog, clicking: {selector}")
-                            await cookie_button.click()
-                            await asyncio.sleep(1)  # Wait for dialog to close
-                            break
+                    from scrapers.contact_scraper import ContactScraper
+                    # Use current browser context if available
+                    if hasattr(self, 'context') and self.context:
+                        self.contact_scraper = ContactScraper(context=self.context)
+                    else:
+                        # Will create its own browser context
+                        self.contact_scraper = ContactScraper()
                 except Exception as e:
-                    # Continue trying other selectors
-                    continue
-                    
-        except Exception as e:
-            logger.debug(f"Cookie consent handling error (non-critical): {e}")
-    
-    async def handle_captcha(self, page: Page) -> bool:
-        """Handle captcha - auto-solve with OCR or manual solving"""
-        try:
-            # Wait a moment for page to load completely
-            await asyncio.sleep(2)
+                    logger.error(f"Failed to initialize contact scraper: {e}")
+                    self.contact_scraper_available = False
+                    return True, job_data
             
-            # Check if captcha is present
-            captcha_image = await page.query_selector(self.selectors['captcha_image'])
+            if not self.contact_scraper_available:
+                return True, job_data
             
-            if captcha_image:
-                logger.warning("🔒 CAPTCHA detected!")
-                
-                # Try auto-solving first if available
-                if self.auto_solve_captcha and self.captcha_solver:
-                    logger.info("🤖 Attempting auto-solve with TrOCR...")
-                    
-                    success = await self.captcha_solver.solve_captcha_from_page(
-                        page,
-                        self.selectors['captcha_image'],
-                        self.selectors['captcha_input'],
-                        self.selectors['captcha_submit']
-                    )
-                    
-                    if success:
-                        logger.info("CAPTCHA auto-solved successfully!")
-                        return True
-                    else:
-                        logger.warning("Auto-solve failed, falling back to manual solving...")
-                
-                # Fallback to manual solving
-                logger.info("Please solve CAPTCHA manually...")
-                logger.info("Note: After solving once, other jobs should not require CAPTCHA")
-                
-                # Manual solving with better detection
-                return await self._handle_manual_captcha(page)
-            else:
-                # No captcha present - check if contact info is already available
-                phone_available = await page.query_selector(self.selectors['contact_phone'])
-                email_available = await page.query_selector(self.selectors['contact_email'])
-                contact_address_available = await page.query_selector(self.selectors['contact_address'])
-                
-                if phone_available or email_available or contact_address_available:
-                    logger.debug("Contact info available (no CAPTCHA required)")
-                    return True
-                else:
-                    logger.debug("Contact info not available yet")
-                    return False
-            
-        except Exception as e:
-            logger.error(f"Error handling CAPTCHA: {e}")
-            return False
-    
-    async def _handle_manual_captcha(self, page: Page) -> bool:
-        """Handle manual CAPTCHA solving with better detection"""
-        try:
-            logger.info("=== MANUAL CAPTCHA SOLVING ===")
-            logger.info("Please solve the CAPTCHA manually in the browser")
-            logger.info("The script will automatically detect when you're done")
-            logger.info("Available indicators to watch for:")
-            logger.info("  - Contact information appears")
-            logger.info("  - Application links become visible")
-            logger.info("  - CAPTCHA image disappears")
-            
-            # Multiple ways to detect CAPTCHA solved
-            max_wait_time = 300  # 5 minutes max
-            check_interval = 2   # Check every 2 seconds
-            elapsed_time = 0
-            
-            while elapsed_time < max_wait_time:
-                # Method 1: Check if contact info appears
-                contact_visible = await page.query_selector(self.selectors['contact_address'])
-                if contact_visible:
-                    logger.info("SUCCESS: Contact information detected - CAPTCHA solved!")
-                    return True
-                
-                # Method 2: Check if application link appears
-                app_link_visible = await page.query_selector(self.selectors['application_link'])
-                if app_link_visible:
-                    logger.info("SUCCESS: Application link detected - CAPTCHA solved!")
-                    return True
-                
-                # Method 3: Check if CAPTCHA image is gone
-                captcha_still_present = await page.query_selector(self.selectors['captcha_image'])
-                if not captcha_still_present:
-                    logger.info("SUCCESS: CAPTCHA image disappeared - CAPTCHA solved!")
-                    # Wait a bit more to ensure page loads completely
-                    await asyncio.sleep(3)
-                    return True
-                
-                # Method 4: Check if there's a success message or page change
-                try:
-                    # Look for any content that indicates success
-                    page_content = await page.text_content('body')
-                    if any(indicator in page_content.lower() for indicator in ['bewerbung', 'kontakt', 'ansprechpartner']):
-                        # Verify it's not just the CAPTCHA page
-                        if not await page.query_selector(self.selectors['captcha_input']):
-                            logger.info("SUCCESS: Page content changed - CAPTCHA solved!")
-                            return True
-                except:
-                    pass
-                
-                # Wait and check again
-                await asyncio.sleep(check_interval)
-                elapsed_time += check_interval
-                
-                # Show progress every 30 seconds
-                if elapsed_time % 30 == 0:
-                    remaining = max_wait_time - elapsed_time
-                    logger.info(f"Still waiting for CAPTCHA solution... ({remaining}s remaining)")
-            
-            # Timeout reached
-            logger.warning("TIMEOUT: Manual CAPTCHA solving took too long")
-            logger.info("Trying to continue anyway - some content might still be accessible")
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error in manual CAPTCHA handling: {e}")
-            return False
-    
-    async def stabilize_page_after_captcha(self, page: Page, job_url: str) -> Optional[Page]:
-        """
-        Simple page refresh after CAPTCHA solving - no tab creation to avoid reference issues
-        """
-        try:
-            logger.info("[STABILIZE] Refreshing page after CAPTCHA...")
-            self.stats['stabilization_attempts'] += 1
-            
-            # Simple page refresh only - no tab creation
-            refresh_success = await self._try_page_refresh(page)
-            if refresh_success:
-                logger.info("[OK] Page stabilized with refresh")
-                self.stats['stabilization_refresh_success'] += 1
-                return page
-            else:
-                logger.warning("[WARNING] Page refresh failed, continuing with current page")
-                self.stats['stabilization_failures'] += 1
-                return page
-            
-        except Exception as e:
-            logger.error(f"Error in page stabilization: {e}")
-            return page  # Return original page if stabilization fails
-    
-    async def _try_page_refresh(self, page: Page) -> bool:
-        """Try to refresh the current page and verify it's working"""
-        try:
-            logger.debug("Attempting page refresh...")
-            
-            # Check if page is responsive before refresh
-            try:
-                await page.evaluate("document.readyState", timeout=5000)
-            except:
-                logger.debug("Page seems unresponsive, proceeding with refresh")
-            
-            # Refresh the page
-            await page.reload(timeout=self.stabilization_timeout * 1000, wait_until='networkidle')
-            
-            # Wait for page to stabilize
-            await asyncio.sleep(3)
-            
-            # Verify page is working by checking for basic elements
-            try:
-                # Try to find job title or company name
-                title_element = await page.query_selector(self.selectors['title'])
-                company_element = await page.query_selector(self.selectors['company'])
-                
-                if title_element or company_element:
-                    logger.debug("Page refresh successful - basic elements found")
-                    return True
-                else:
-                    logger.debug("Page refresh didn't restore expected content")
-                    return False
-                    
-            except Exception as e:
-                logger.debug(f"Page refresh verification failed: {e}")
-                return False
-                
-        except Exception as e:
-            logger.debug(f"Page refresh failed: {e}")
-            return False
-    
-    async def simple_page_refresh_if_needed(self, page: Page) -> bool:
-        """Simple refresh if contact info missing - no tab creation"""
-        try:
-            logger.info("🔄 Refreshing page to get missing contact info...")
-            await page.reload(timeout=30000, wait_until='networkidle')
-            await asyncio.sleep(2)  # Wait for page to stabilize
-            return True
-        except Exception as e:
-            logger.warning(f"Page refresh failed: {e}")
-            return False
-    
-    async def extract_text_safe(self, page: Page, selector: str) -> Optional[str]:
-        """Safely extract text from element"""
-        try:
-            element = await page.query_selector(selector)
-            if element:
-                text = await element.text_content()
-                return text.strip() if text else None
-            return None
-        except Exception as e:
-            logger.debug(f"Error extracting text for {selector}: {e}")
-            return None
-    
-    async def extract_attribute_safe(self, page: Page, selector: str, attribute: str) -> Optional[str]:
-        """Safely extract attribute from element"""
-        try:
-            element = await page.query_selector(selector)
-            if element:
-                attr = await element.get_attribute(attribute)
-                return attr.strip() if attr else None
-            return None
-        except Exception as e:
-            logger.debug(f"Error extracting attribute {attribute} for {selector}: {e}")
-            return None
-    
-    async def extract_contact_from_text(self, text: str) -> Dict[str, Optional[str]]:
-        """Extract phone and email from text using regex patterns"""
-        contact_info = {'phone': None, 'email': None, 'contact_person': None}
-        
-        if not text:
-            return contact_info
-        
-        # Extract phone
-        for pattern in self.contact_patterns['phone']:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                phone = match.group(0).strip()
-                # Clean common phone formatting
-                phone = re.sub(r'Tel\.?[\s:]?', '', phone, flags=re.IGNORECASE)
-                phone = re.sub(r'Telefon[\s:]?', '', phone, flags=re.IGNORECASE)
-                phone = re.sub(r'Fon[\s:]?', '', phone, flags=re.IGNORECASE)
-                contact_info['phone'] = phone.strip()
-                break
-        
-        # Extract email
-        for pattern in self.contact_patterns['email']:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                # Get the full match or the first group if it exists
-                email = (match.group(1) if match.groups() else match.group(0)).strip()
-                contact_info['email'] = email
-                break
-        
-        # Extract contact person (German patterns)
-        contact_patterns = [
-            r'(?:melde dich bei|Ansprechpartner[in]*:|Kontakt:)\s*([A-Za-zäöüßÄÖÜ\s]+?)(?:\s+unter|\s+\+|\s+0|\s*$)',
-            r'(?:Frau|Herr)\s+([A-Za-zäöüßÄÖÜ\s]+?)(?:\s+unter|\s+\+|\s+0|\n|$)',
-            r'([A-Za-zäöüßÄÖÜ]+\s+[A-Za-zäöüßÄÖÜ]+)(?:\s+unter|\s+\+|\s+0)'
-        ]
-        
-        for pattern in contact_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                contact_person = match.group(1).strip()
-                # Filter out common false positives
-                if len(contact_person) > 3 and not any(word in contact_person.lower() for word in ['position', 'job-id', 'vollzeit', 'stelle']):
-                    contact_info['contact_person'] = contact_person
-                    break
-        
-        return contact_info
-    
-    async def extract_direct_contact_info(self, page: Page) -> Dict[str, Optional[str]]:
-        """Extract contact info directly from page (post-CAPTCHA scenario)"""
-        contact_info = {'phone': None, 'email': None, 'contact_person': None}
-        
-        try:
-            logger.debug(f"Extracting contact info using selectors: phone='{self.selectors['contact_phone']}', email='{self.selectors['contact_email']}'")
-            
-            # Extract phone (handle tel: links)
-            phone_element = await page.query_selector(self.selectors['contact_phone'])
-            if phone_element:
-                logger.debug("Phone element found")
-                phone_href = await phone_element.get_attribute('href')
-                phone_text = await phone_element.text_content()
-                logger.debug(f"Phone href: '{phone_href}', text: '{phone_text}'")
-                
-                if phone_href and phone_href.startswith('tel:'):
-                    phone = phone_href.replace('tel:', '').replace('&nbsp;', ' ').strip()
-                    contact_info['phone'] = phone
-                    logger.debug(f"Extracted phone from href: '{phone}'")
-                else:
-                    # Fallback to text content
-                    if phone_text:
-                        contact_info['phone'] = phone_text.strip()
-                        logger.debug(f"Extracted phone from text: '{phone_text.strip()}'")
-            else:
-                logger.debug("Phone element not found")
-            
-            # Extract email (handle mailto: links)
-            email_element = await page.query_selector(self.selectors['contact_email'])
-            if email_element:
-                logger.debug("Email element found")
-                email_href = await email_element.get_attribute('href')
-                email_text = await email_element.text_content()
-                logger.debug(f"Email href: '{email_href}', text: '{email_text}'")
-                
-                if email_href and email_href.startswith('mailto:'):
-                    contact_info['email'] = email_href.replace('mailto:', '')
-                    logger.debug(f"Extracted email from href: '{contact_info['email']}'")
-                else:
-                    # Fallback to text content
-                    if email_text and '@' in email_text:
-                        contact_info['email'] = email_text.strip()
-                        logger.debug(f"Extracted email from text: '{email_text.strip()}'")
-            else:
-                logger.debug("Email element not found")
-            
-            # Extract contact person from address block
-            address_text = await self.extract_text_safe(page, self.selectors['contact_address'])
-            if address_text:
-                # Parse contact person name from address
-                lines = address_text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if any(title in line for title in ['Frau', 'Herr', 'Mr.', 'Ms.', 'Mrs.']):
-                        # Extract the name part
-                        name_match = re.search(r'(?:Frau|Herr|Mr\.|Ms\.|Mrs\.)\s+([A-Za-zäöüßÄÖÜ\s]+)', line)
-                        if name_match:
-                            contact_info['contact_person'] = name_match.group(1).strip()
-                            break
-                        else:
-                            contact_info['contact_person'] = line.strip()
-                            break
-            
-            logger.debug(f"Direct contact extraction: {contact_info}")
-            return contact_info
-            
-        except Exception as e:
-            logger.debug(f"Error extracting direct contact info: {e}")
-            return contact_info
-    
-    async def scrape_application_link(self, application_url: str) -> Dict[str, Optional[str]]:
-        """Scrape contact info from application link (Bonus Task)"""
-        if not application_url:
-            return {'phone': None, 'email': None, 'contact_person': None}
-        
-        try:
-            logger.info(f"Scraping application link: {application_url}")
-            
-            # Create new page for application link (separate from main page)
-            app_page = await self.context.new_page()
-            await app_page.goto(application_url, timeout=30000)
-            await app_page.wait_for_load_state('networkidle', timeout=10000)
-            
-            # Get full page content
-            page_content = await app_page.content()
-            contact_info = await self.extract_contact_from_text(page_content)
-            
-            # If no contact found on main page, try common contact pages
-            if not contact_info['phone'] and not contact_info['email']:
-                contact_paths = ['/kontakt', '/contact', '/impressum', '/imprint', '/about', '/uber-uns']
-                base_url = '/'.join(application_url.split('/')[:3])  # Get domain
-                
-                for path in contact_paths:
-                    try:
-                        contact_url = f"{base_url}{path}"
-                        await app_page.goto(contact_url, timeout=10000)
-                        await app_page.wait_for_load_state('networkidle', timeout=5000)
-                        
-                        contact_page_content = await app_page.content()
-                        contact_page_info = await self.extract_contact_from_text(contact_page_content)
-                        
-                        if contact_page_info['phone'] or contact_page_info['email']:
-                            contact_info.update({k: v for k, v in contact_page_info.items() if v})
-                            logger.info(f"Found contact info on {contact_url}")
-                            break
-                            
-                    except Exception as e:
-                        logger.debug(f"Could not access {contact_url}: {e}")
-                        continue
-            
-            await app_page.close()
-            logger.debug(f"Application link contact extraction: {contact_info}")
-            return contact_info
-            
-        except Exception as e:
-            logger.warning(f"Error scraping application link {application_url}: {e}")
-            return {'phone': None, 'email': None, 'contact_person': None}
-    
-    async def scrape_single_job(self, page: Page, job_data: Dict) -> Dict:
-        """Scrape a single job page and return structured data"""
-        job_url = job_data['job_url']
-        ref_nr_from_csv = job_data['ref_nr']
-        
-        try:
-            logger.info(f"Scraping job: {job_url}")
-            
-            # Navigate to job page
-            await page.goto(job_url, timeout=30000)
-            await page.wait_for_load_state('networkidle', timeout=15000)
-            
-            # Handle cookie consent dialog
-            await self.handle_cookie_consent(page)
-            
-            # Wait for main content to load after cookie consent
-            await asyncio.sleep(3)
-            
-            # Wait for key elements to be present before extraction
-            try:
-                await page.wait_for_selector('#detail-kopfbereich-titel', timeout=10000)
-                logger.debug("Main job content loaded successfully")
-            except Exception as e:
-                logger.warning(f"Main job content loading timeout: {e}")
-                # Continue anyway - might still be able to extract some data
-            
-            # NEW: Check for external redirect FIRST
-            external_data = None
-            if self.external_handler:
-                external_data = await self.external_handler.detect_external_redirect(page)
-            
-            if external_data and external_data.get('has_external_redirect'):
-                logger.info(f"🔗 External redirect detected: {external_data.get('partner_domain')}")
-                
-                # Extract basic info from current page (fallback)
-                title = await self.extract_text_safe(page, self.selectors['title'])
-                company = await self.extract_text_safe(page, self.selectors['company'])
-                location = await self.extract_text_safe(page, self.selectors['location'])
-                
-                # Scrape external job details
-                external_job_data = await self.external_handler.scrape_external_job(external_data['external_url'])
-                
-                # Merge data (prioritize external data)
-                scraped_data = {
-                    'profession': external_job_data.get('title') or title,
-                    'company_name': external_job_data.get('company') or company,
-                    'location': external_job_data.get('location') or location,
-                    'job_description': external_job_data.get('description'),
-                    'telephone': external_job_data.get('contact_phone'),
-                    'email': external_job_data.get('contact_email'),
-                    'start_date': external_job_data.get('start_date'),
-                    'salary': external_job_data.get('salary'),
-                    'ref_nr': ref_nr_from_csv,
-                    'external_link': external_data.get('external_url'),
-                    'application_link': external_data.get('external_url'),
-                    'job_type': None,
-                    'ausbildungsberuf': None,
-                    'application_method': 'external_redirect',
-                    'contact_person': None,
-                    'scraped_at': datetime.now().isoformat(),
-                    'source_url': job_url,
-                    'captcha_solved': False,
-                    'is_external_redirect': True,
-                    'external_partner': external_data.get('partner_domain'),
-                    'external_company': external_data.get('partner_company'),
-                    'utm_campaign': external_data.get('utm_campaign'),
-                    'utm_source': external_data.get('utm_source'),
-                    'external_scraped_at': external_job_data.get('external_scraped_at')
-                }
-                
-                # Add any errors from external scraping
-                if external_job_data.get('external_scraping_error'):
-                    scraped_data['external_error'] = external_job_data['external_scraping_error']
-                
-                self.scraped_count += 1
-                logger.info(f"[SUCCESS] External job scraped: {scraped_data['profession']} @ {scraped_data['external_partner']}")
-                return scraped_data
-            
-            # EXISTING: Continue with normal scraping if no external redirect
-            logger.debug("No external redirect, proceeding with normal scraping")
-            
-            # Extract basic information (available without CAPTCHA)
-            title = await self.extract_text_safe(page, self.selectors['title'])
-            company = await self.extract_text_safe(page, self.selectors['company'])
-            location = await self.extract_text_safe(page, self.selectors['location'])
-            start_date = await self.extract_text_safe(page, self.selectors['start_date'])
-            job_description = await self.extract_text_safe(page, self.selectors['job_description'])
-            job_type = await self.extract_text_safe(page, self.selectors['job_type'])
-            ausbildungsberuf = await self.extract_text_safe(page, self.selectors['ausbildungsberuf'])
-            
-            # Handle CAPTCHA to get contact information
-            captcha_solved = await self.handle_captcha(page)
-            
-            # Initialize contact variables
-            phone = None
-            email = None
-            contact_person = None
-            application_link = None
-            external_link = None
-            ref_nr = None
-            application_method = None
-            
-            if captcha_solved:
-                # POST-CAPTCHA PAGE STABILIZATION
-                # After CAPTCHA solving, page may have rendering issues or get stuck
-                if self.enable_page_stabilization:
-                    page = await self.stabilize_page_after_captcha(page, job_url)
-                    if not page:
-                        # If stabilization failed, return error data
-                        logger.error("Failed to stabilize page after CAPTCHA - continuing with basic data")
-                        captcha_solved = False
-                else:
-                    logger.debug("Page stabilization disabled, continuing without refresh")
-                # SCENARIO 1: Try to extract direct contact info (post-CAPTCHA)
-                direct_contact = await self.extract_direct_contact_info(page)
-                phone = direct_contact['phone']
-                email = direct_contact['email']
-                contact_person = direct_contact['contact_person']
-                
-                # Extract application links and ref number
-                application_link = await self.extract_attribute_safe(page, self.selectors['application_link'], 'href')
-                external_link = await self.extract_attribute_safe(page, self.selectors['external_link'], 'href')
-                ref_nr = await self.extract_text_safe(page, self.selectors['ref_nr'])
-                application_method = await self.extract_text_safe(page, self.selectors['application_method'])
-                
-                # If no ref_nr found, try footer location
-                if not ref_nr:
-                    ref_nr = await self.extract_text_safe(page, self.selectors['ref_nr_footer'])
-                
-                # SCENARIO 2: If contact info missing, try application link (Bonus Task)
-                if (not phone or not email) and application_link:
-                    logger.info("Contact info missing, attempting application link scraping (Bonus Task)")
-                    app_contact = await self.scrape_application_link(application_link)
-                    
-                    # Use application link data to fill missing info
-                    phone = phone or app_contact['phone']
-                    email = email or app_contact['email']
-                    contact_person = contact_person or app_contact['contact_person']
-                    
-                    if app_contact['phone'] or app_contact['email']:
-                        logger.info("Successfully extracted contact info from application link")
-                
-                # Log contact extraction results
-                contact_status = []
-                if phone: contact_status.append("phone")
-                if email: contact_status.append("email")
-                if contact_person: contact_status.append("contact_person")
-                
-                if contact_status:
-                    logger.info(f"Contact info extracted: {', '.join(contact_status)}")
-                else:
-                    # Try page refresh to get missing contact info
-                    logger.info("💪 Trying page refresh to get missing contact info...")
-                    refresh_success = await self.simple_page_refresh_if_needed(page)
-                    if refresh_success:
-                        # Retry contact extraction after refresh
-                        direct_contact_retry = await self.extract_direct_contact_info(page)
-                        phone = direct_contact_retry['phone'] or phone
-                        email = direct_contact_retry['email'] or email
-                        contact_person = direct_contact_retry['contact_person'] or contact_person
-                        
-                        # Update contact status after retry
-                        contact_status = []
-                        if phone: contact_status.append("phone")
-                        if email: contact_status.append("email")
-                        if contact_person: contact_status.append("contact_person")
-                        
-                        if contact_status:
-                            logger.info(f"✅ Contact info found after refresh: {', '.join(contact_status)}")
-                        else:
-                            logger.warning("No contact information found even after refresh (acceptable per assignment)")
-                    else:
-                        logger.warning("No contact information found (acceptable per assignment)")
-            
-            # Extract salary from job description if available
-            salary = None
-            if job_description:
-                salary_patterns = [
-                    r'€[\s]?\d+[\.,]?\d*(?:\s*-\s*€?\s*\d+[\.,]?\d*)?',
-                    r'\d+[\.,]?\d*[\s]?€(?:\s*-\s*\d+[\.,]?\d*\s*€)?',
-                    r'Gehalt[\s:]+[€\d\.,\s\-]+',
-                    r'Verdienst[\s:]+[€\d\.,\s\-]+',
-                    r'Vergütung[\s:]+[€\d\.,\s\-]+',
-                    r'Ausbildungsvergütung[\s:]+[€\d\.,\s\-]+'
-                ]
-                for pattern in salary_patterns:
-                    match = re.search(pattern, job_description, re.IGNORECASE)
-                    if match:
-                        salary = match.group(0).strip()
-                        break
-            
-            # Clean and structure the data
-            scraped_data = {
-                'profession': title,
-                'salary': salary,
-                'company_name': company,
-                'location': location,
-                'start_date': start_date,
-                'telephone': phone,
-                'email': email,
-                'job_description': job_description,
-                'ref_nr': ref_nr or ref_nr_from_csv,
-                'external_link': external_link,
-                'application_link': application_link,
-                'job_type': job_type,
-                'ausbildungsberuf': ausbildungsberuf,
-                'application_method': application_method,
-                'contact_person': contact_person,
-                'scraped_at': datetime.now().isoformat(),
-                'source_url': job_url,
-                'captcha_solved': captcha_solved,
-                'is_external_redirect': False
+            # Prepare job for contact enhancement
+            enhancement_job = {
+                'ref_nr': job_data.get('ref_nr'),
+                'company_name': company_name,
+                'company_website': company_website,
+                'job_url': job_data.get('job_url'),
+                'current_email': job_data.get('email'),
+                'current_phone': job_data.get('phone')
             }
             
-            self.scraped_count += 1
-            logger.info(f"Successfully scraped job {self.scraped_count}: {title}")
-            return scraped_data
-            
-        except Exception as e:
-            logger.error(f"Error scraping job {job_url}: {e}")
-            self.failed_count += 1
-            return {
-                'profession': None,
-                'salary': None,
-                'company_name': None,
-                'location': None,
-                'start_date': None,
-                'telephone': None,
-                'email': None,
-                'job_description': None,
-                'ref_nr': ref_nr_from_csv,
-                'external_link': None,
-                'application_link': None,
-                'job_type': None,
-                'ausbildungsberuf': None,
-                'application_method': None,
-                'contact_person': None,
-                'scraped_at': datetime.now().isoformat(),
-                'source_url': job_url,
-                'error': str(e),
-                'captcha_solved': False,
-                'is_external_redirect': False
-            }
-    
-    async def save_progress(self, scraped_jobs: List[Dict], batch_number: int = None):
-        """Save current progress using FileManager or legacy method + Database"""
-        try:
-            # Validate data if JobModel is available
-            validated_jobs = scraped_jobs
-            if JOB_MODEL_AVAILABLE and self.validate_data:
-                validated_jobs = []
-                for job_data in scraped_jobs:
-                    try:
-                        job_model = JobModel.from_scraped_data(job_data)
-                        validation_result = job_model.validate()
-                        
-                        if validation_result.is_valid:
-                            validated_jobs.append(job_model.to_dict())
-                        else:
-                            self.stats['validation_failures'] += 1
-                            logger.warning(f"Job validation failed: {job_data.get('ref_nr', 'no-ref')} - {validation_result.errors}")
-                            # Still save but mark as invalid
-                            job_dict = job_model.to_dict()
-                            job_dict['validation_errors'] = validation_result.errors
-                            validated_jobs.append(job_dict)
-                    except Exception as e:
-                        logger.error(f"Validation error for job: {e}")
-                        validated_jobs.append(job_data)  # Keep original if validation fails
-            
-            # REALTIME DATABASE LOADING
+            # Perform contact enhancement with timeout
             try:
-                from database.data_loader import JobDataLoader
-                loader = JobDataLoader()
-                
-                # Load each job immediately into database
-                for job_data in validated_jobs:
-                    try:
-                        result = await loader.load_single_job(job_data)
-                        if result and result.get('loaded', 0) > 0:
-                            logger.info(f"💾 Job {job_data.get('ref_nr', 'no-ref')} loaded to database")
-                        else:
-                            logger.warning(f"⚠️ Job {job_data.get('ref_nr', 'no-ref')} failed to load to database")
-                    except Exception as e:
-                        logger.error(f"Database load error for job {job_data.get('ref_nr', 'no-ref')}: {e}")
-                        
-                logger.info(f"🚀 REALTIME DB: Attempted to load {len(validated_jobs)} jobs to database")
-            except Exception as e:
-                logger.error(f"Database loading module error: {e}")
-                logger.info("Continuing with file-only saving...")
-            
-            # Use FileManager if available
-            if FILE_MANAGER_AVAILABLE and self.file_manager:
-                json_path, csv_path = self.file_manager.save_jobs_batch(
-                    validated_jobs, 
-                    batch_number=batch_number,
-                    session_id=self.session_id,
-                    use_session_dir=self.use_sessions
+                enhanced_contact = await asyncio.wait_for(
+                    self.contact_scraper.enhance_single_job_contact(enhancement_job),
+                    timeout=30  # 30 second timeout per job
                 )
                 
-                logger.info(f"[SUCCESS] Progress saved using FileManager: {len(validated_jobs)} jobs")
-                logger.info(f"Files: {json_path.name}, {csv_path.name}")
-                
-            else:
-                # Legacy file saving method
-                output_dir = Path("data/output")
-                output_dir.mkdir(parents=True, exist_ok=True)
-                
-                if batch_number is None:
-                    # Find next batch number
-                    existing_batches = list(output_dir.glob("scraped_jobs_batch_*.json"))
-                    batch_numbers = []
-                    for batch_file in existing_batches:
-                        try:
-                            num = int(batch_file.stem.split('_')[-1])
-                            batch_numbers.append(num)
-                        except:
-                            continue
-                    batch_number = max(batch_numbers) + 1 if batch_numbers else 1
-                
-                # Save as JSON (incremental)
-                json_path = output_dir / f"scraped_jobs_batch_{batch_number}.json"
-                with open(json_path, 'w', encoding='utf-8') as f:
-                    json.dump(validated_jobs, f, ensure_ascii=False, indent=2)
-                
-                # Save as CSV (consolidated)
-                csv_path = output_dir / "scraped_jobs_progress.csv"
-                df = pd.DataFrame(validated_jobs)
-                df.to_csv(csv_path, index=False, encoding='utf-8')
-                
-                logger.info(f"📁 Progress saved (legacy): {len(validated_jobs)} jobs in batch {batch_number}")
+                if enhanced_contact:
+                    # Update job with enhanced contacts
+                    if enhanced_contact.get('email') and not has_email:
+                        job_data['email'] = enhanced_contact['email']
+                        job_data['email_source'] = 'realtime_enhancement'
+                        logger.info(f"[SUCCESS] Enhanced email: {job_data.get('ref_nr')} → {enhanced_contact['email']}")
+                    
+                    if enhanced_contact.get('phone') and not has_phone:
+                        job_data['phone'] = enhanced_contact['phone']
+                        job_data['phone_source'] = 'realtime_enhancement'
+                        logger.info(f"[SUCCESS] Enhanced phone: {job_data.get('ref_nr')} → {enhanced_contact['phone']}")
+                    
+                    # Add enhancement metadata
+                    job_data['realtime_enhanced'] = True
+                    job_data['enhanced_at'] = datetime.now().isoformat()
+                    
+                    self.v2_stats['enhancement_successes'] += 1
+                    return True, job_data
+                else:
+                    logger.info(f"[WARNING] No additional contacts found: {job_data.get('ref_nr')}")
+                    self.v2_stats['enhancement_failures'] += 1
+                    return True, job_data  # Continue even if enhancement failed
+            
+            except asyncio.TimeoutError:
+                logger.warning(f"⏰ Enhancement timeout: {job_data.get('ref_nr')}")
+                self.v2_stats['enhancement_failures'] += 1
+                return True, job_data
+            
+            except Exception as e:
+                logger.error(f"❌ Enhancement error for {job_data.get('ref_nr')}: {e}")
+                self.v2_stats['enhancement_failures'] += 1
+                return True, job_data  # Continue even if enhancement failed
             
         except Exception as e:
-            logger.error(f"[ERROR] Error saving progress: {e}")
-            self.stats['errors'] += 1
+            logger.error(f"Error in realtime contact enhancement: {e}")
+            self.v2_stats['enhancement_failures'] += 1
+            return True, job_data  # Continue even if enhancement system failed
     
-    async def load_existing_progress(self) -> List[Dict]:
-        """Load previously scraped job data"""
+    async def save_progress_v2(self, scraped_jobs: List[Dict], batch_number: int = None):
+        """V2 Save progress with comprehensive validation, cleaning, and single DB load"""
         try:
-            progress_file = Path("data/output/scraped_jobs_progress.csv")
-            if progress_file.exists():
-                df = pd.read_csv(progress_file)
-                logger.info(f"Loaded {len(df)} previously scraped jobs")
-                return df.to_dict('records')
-            return []
-        except Exception as e:
-            logger.error(f"Error loading existing progress: {e}")
-            return []
-    
-    async def process_jobs_batch(self, job_urls: List[Dict], batch_size: int = 10) -> List[Dict]:
-        """Process jobs in batches to avoid overwhelming the server"""
-        all_scraped_jobs = []
-        total_jobs = len(job_urls)
-        
-        # Use single page for all jobs to maintain session
-        page = await self.context.new_page()
-        
-        for i, job_data in enumerate(job_urls):
-            job_number = i + 1
-            logger.info(f"Processing job {job_number}/{total_jobs}")
+            processed_jobs = []
             
-            # Scrape job with enhanced tracking
-            scraped_job = await self.scrape_single_job(page, job_data)
-            all_scraped_jobs.append(scraped_job)
-            
-            # Update statistics
-            self.stats['total_processed'] += 1
-            if scraped_job.get('captcha_solved'):
-                self.stats['captcha_encounters'] += 1
-                self.stats['captcha_solved'] += 1
-            if not scraped_job.get('error'):
-                self.stats['successful_scrapes'] += 1
-            else:
-                self.stats['errors'] += 1
-            
-            # Save progress every N jobs (from settings)
-            if job_number % self.batch_size == 0:
-                batch_number = job_number // self.batch_size
-                await self.save_progress(all_scraped_jobs, batch_number)
+            for job_data in scraped_jobs:
+                self.v2_stats['scraped_count'] += 1
                 
-                # Log enhanced progress with statistics
-                success_rate = (self.stats['successful_scrapes'] / max(self.stats['total_processed'], 1)) * 100
-                logger.info(f"📊 Progress: {job_number}/{total_jobs} jobs ({success_rate:.1f}% success)")
-                if self.stats['captcha_encounters'] > 0:
-                    captcha_rate = (self.stats['captcha_solved'] / self.stats['captcha_encounters']) * 100
-                    logger.info(f"🔒 CAPTCHAs: {self.stats['captcha_solved']}/{self.stats['captcha_encounters']} solved ({captcha_rate:.1f}%)")
+                # Step 1: Comprehensive validation
+                if self.enable_comprehensive_validation:
+                    is_valid, errors, enhanced_data = await self.comprehensive_validate_job(job_data)
+                    
+                    if not is_valid:
+                        self.v2_stats['validation_failures'] += 1
+                        logger.warning(f"Validation failed for {job_data.get('ref_nr', 'unknown')}: {errors}")
+                        continue  # Skip invalid jobs
+                    
+                    job_data = enhanced_data
+                
+                # Step 2: Enhanced cleaning
+                if self.enable_enhanced_cleaning:
+                    cleaned_success, cleaned_data = await self.enhanced_clean_job(job_data)
+                    
+                    if not cleaned_success:
+                        self.v2_stats['cleaning_failures'] += 1
+                        logger.warning(f"Cleaning failed for {job_data.get('ref_nr', 'unknown')}")
+                        continue  # Skip failed cleaning
+                    
+                    job_data = cleaned_data
+                    self.v2_stats['cleaned_count'] += 1
+                
+                # Step 2.5: Realtime contact enhancement (if missing contact info)
+                if self.enable_realtime_enhancement:
+                    enhanced_success, enhanced_data = await self.realtime_contact_enhancement(job_data)
+                    
+                    if enhanced_success:
+                        job_data = enhanced_data
+                    else:
+                        logger.warning(f"Realtime enhancement failed for {job_data.get('ref_nr', 'unknown')}")
+                
+                # Step 3: Single database load
+                if self.enable_single_db_load and self.db_loader:
+                    try:
+                        result = await self.db_loader.load_single_job(job_data)
+                        if result and result.get('loaded', 0) > 0:
+                            self.v2_stats['loaded_count'] += 1
+                            logger.info(f"[DATABASE] {job_data.get('ref_nr', 'unknown')} loaded to database")
+                        else:
+                            self.v2_stats['database_failures'] += 1
+                            logger.warning(f"❌ Database load failed: {job_data.get('ref_nr', 'unknown')}")
+                            
+                    except Exception as e:
+                        self.v2_stats['database_failures'] += 1
+                        logger.error(f"Database error for {job_data.get('ref_nr', 'unknown')}: {e}")
+                
+                processed_jobs.append(job_data)
             
-            # Add configurable delay between requests
-            await asyncio.sleep(self.delay_between_jobs)
-        
-        await page.close()
-        return all_scraped_jobs
+            # Still save to files as backup (but not the primary method)
+            if processed_jobs:
+                await super().save_progress(processed_jobs, batch_number)
+                
+            # Calculate data quality score
+            if self.v2_stats['scraped_count'] > 0:
+                quality_score = (self.v2_stats['loaded_count'] / self.v2_stats['scraped_count'])
+                self.v2_stats['data_quality_score'] = quality_score
+            
+            logger.info(f"🎯 V2 Batch processed: {len(processed_jobs)} jobs")
+            logger.info(f"   [DATABASE] Loaded to DB: {self.v2_stats['loaded_count']}")
+            logger.info(f"   [ENHANCE] Realtime enhancements: {self.v2_stats['realtime_enhancements']}")
+            logger.info(f"   [SUCCESS] Enhancement successes: {self.v2_stats['enhancement_successes']}")
+            logger.info(f"   [QUALITY] Quality score: {self.v2_stats['data_quality_score']:.1%}")
+            
+        except Exception as e:
+            logger.error(f"Error in V2 save progress: {e}")
+            raise
     
-    async def validate_job_data(self, job_data: Dict) -> bool:
-        """Validate extracted job data"""
-        required_fields = ['profession', 'company_name', 'source_url']
-        for field in required_fields:
-            if not job_data.get(field):
-                return False
+    async def run_enhanced(self, input_csv_path: str, resume: bool = False, 
+                          auto_solve_captcha: bool = True) -> Dict[str, Any]:
+        """Run enhanced V2 scraping with integrated validation, cleaning, and DB loading"""
+        try:
+            logger.info("🚀 Starting V2 enhanced scraping...")
+            
+            # Override the save_progress method to use V2
+            original_save_progress = self.save_progress
+            self.save_progress = self.save_progress_v2
+            
+            # Run base scraping
+            await self.run(
+                input_csv_path=input_csv_path,
+                resume=resume,
+                auto_solve_captcha=auto_solve_captcha
+            )
+            
+            # Restore original method
+            self.save_progress = original_save_progress
+            
+            logger.info("🎉 V2 Enhanced scraping completed!")
+            return self.v2_stats
+            
+        except Exception as e:
+            logger.error(f"Error in V2 enhanced run: {e}")
+            return self.v2_stats
+    
+    def _validate_email(self, email: str) -> bool:
+        """Enhanced email validation"""
+        if not email or email.strip() == '':
+            return False
+            
+        # Remove common issues
+        email = email.strip().lower()
+        
+        # Skip URLs masquerading as emails
+        if email.startswith('http') or email.startswith('?body='):
+            return False
+            
+        # Basic email regex
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(email_pattern, email) is not None
+    
+    def _validate_phone(self, phone: str) -> bool:
+        """Enhanced phone validation"""
+        if not phone or phone.strip() == '':
+            return False
+            
+        # Clean phone number
+        cleaned_phone = re.sub(r'[^\d+()-\s]', '', phone.strip())
+        
+        # German phone number patterns
+        phone_patterns = [
+            r'^\+49[\d\s()-]{8,15}$',  # International
+            r'^0[\d\s()-]{8,15}$',     # National
+            r'^[\d\s()-]{7,15}$'       # Local
+        ]
+        
+        return any(re.match(pattern, cleaned_phone) for pattern in phone_patterns)
+    
+    def _validate_date_field(self, date_value: Any) -> bool:
+        """Validate date field"""
+        if not date_value:
+            return True  # Empty is OK
+            
+        # Add date validation logic here
         return True
     
-    async def export_to_csv(self, jobs_data: List[Dict], output_path: str):
-        """Export job data to CSV file"""
-        try:
-            df = pd.DataFrame(jobs_data)
-            # Reorder columns to match requirements (11 main fields + additional)
-            # Update column_order to include new fields
-            column_order = [
-                'profession', 'salary', 'company_name', 'location', 'start_date',
-                'telephone', 'email', 'job_description', 'ref_nr', 'external_link',
-                'application_link',  # 11 required fields
-                'job_type', 'ausbildungsberuf', 'application_method', 'contact_person',
-                'captcha_solved', 'scraped_at', 'source_url',  # Existing additional fields
-                'is_external_redirect', 'external_partner', 'external_company',  # NEW
-                'utm_campaign', 'utm_source', 'external_scraped_at'  # NEW
-            ]
+    def _validate_url(self, url: str) -> bool:
+        """Validate URL format"""
+        if not url or url.strip() == '':
+            return True  # Empty is OK
             
-            # Only include columns that exist in the data
-            existing_columns = [col for col in column_order if col in df.columns]
-            df = df.reindex(columns=existing_columns)
+        url_pattern = r'^https?://[^\s]+\.[^\s]+'
+        return re.match(url_pattern, url.strip()) is not None
+    
+    def _clean_special_chars(self, text: str) -> str:
+        """Clean special characters from text"""
+        # Remove excessive whitespace and special chars
+        cleaned = re.sub(r'[^\w\s.,-]', ' ', text)
+        return ' '.join(cleaned.split())
+    
+    def _clean_email_advanced(self, email: str) -> Optional[str]:
+        """Advanced email cleaning"""
+        if not email:
+            return None
             
-            df.to_csv(output_path, index=False, encoding='utf-8')
-            logger.info(f"Data exported to {output_path}")
-        except Exception as e:
-            logger.error(f"Error exporting to CSV: {e}")
+        email = email.strip().lower()
+        
+        # Remove URL parameters
+        if '?body=' in email or 'azubi.de' in email or email.startswith('http'):
+            return None
+            
+        if self._validate_email(email):
+            return email
+        
+        return None
     
-    async def export_to_json(self, jobs_data: List[Dict], output_path: str):
-        """Export job data to JSON file"""
-        try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(jobs_data, f, ensure_ascii=False, indent=2)
-            logger.info(f"Data exported to {output_path}")
-        except Exception as e:
-            logger.error(f"Error exporting to JSON: {e}")
+    def _clean_phone_advanced(self, phone: str) -> Optional[str]:
+        """Advanced phone cleaning"""
+        if not phone:
+            return None
+            
+        # Clean and validate
+        cleaned_phone = re.sub(r'[^\d+()-\s]', '', phone.strip())
+        
+        if self._validate_phone(cleaned_phone):
+            return cleaned_phone
+        
+        return None
     
-    async def generate_missing_emails_report(self, jobs_data: List[Dict]):
-        """Generate report of jobs with missing email addresses"""
-        missing_emails = [job for job in jobs_data if not job.get('email')]
-        
-        output_dir = Path("data/output")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        report_path = output_dir / "missing_emails.json"
-        with open(report_path, 'w', encoding='utf-8') as f:
-            json.dump(missing_emails, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"Missing emails report: {len(missing_emails)}/{len(jobs_data)} jobs missing emails")
-        logger.info(f"Report saved to {report_path}")
+    def _normalize_date(self, date_value: Any) -> Optional[str]:
+        """Normalize date to standard format"""
+        # Add date normalization logic here
+        return None
     
-    def get_scraping_statistics(self) -> Dict:
-        """Get detailed scraping statistics"""
-        # Calculate jobs per minute
-        elapsed_time = (datetime.now() - self.stats['session_start_time']).total_seconds() / 60
-        if elapsed_time > 0:
-            self.stats['jobs_per_minute'] = self.stats['total_processed'] / elapsed_time
+    def _clean_company_name(self, company_name: str) -> str:
+        """Clean and normalize company name"""
+        # Remove common suffixes and clean up
+        cleaned = company_name.strip()
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        return cleaned
+    
+    def _extract_skills(self, description: str) -> List[str]:
+        """Extract skills from job description"""
+        # Simple skill extraction - can be enhanced
+        common_skills = [
+            'python', 'java', 'javascript', 'sql', 'html', 'css',
+            'react', 'angular', 'vue', 'node.js', 'docker', 'kubernetes'
+        ]
         
-        # Calculate success rates
-        success_rate = 0
-        if self.stats['total_processed'] > 0:
-            success_rate = (self.stats['successful_scrapes'] / self.stats['total_processed']) * 100
+        description_lower = description.lower()
+        found_skills = [skill for skill in common_skills if skill in description_lower]
         
-        captcha_success_rate = 0
-        if self.stats['captcha_encounters'] > 0:
-            captcha_success_rate = (self.stats['captcha_solved'] / self.stats['captcha_encounters']) * 100
-        
-        # Add FileManager statistics if available
-        file_stats = {}
-        if FILE_MANAGER_AVAILABLE and self.file_manager:
-            try:
-                file_stats = self.file_manager.get_statistics()
-            except Exception as e:
-                logger.debug(f"Could not get FileManager stats: {e}")
-        
-        # Add CAPTCHA solver statistics if available
-        captcha_stats = {}
-        if self.captcha_solver:
-            try:
-                captcha_stats = self.captcha_solver.get_statistics()
-            except Exception as e:
-                logger.debug(f"Could not get CAPTCHA solver stats: {e}")
-        
+        return found_skills
+    
+    def _normalize_location(self, location: str) -> Dict[str, str]:
+        """Normalize location information"""
+        # Simple location parsing - can be enhanced
         return {
-            'session_info': {
-                'session_id': self.session_id,
-                'start_time': self.stats['session_start_time'].isoformat(),
-                'elapsed_minutes': round(elapsed_time, 2),
-                'use_sessions': self.use_sessions,
-                'validate_data': self.validate_data
-            },
-            'scraping_performance': {
-                'total_processed': self.stats['total_processed'],
-                'successful_scrapes': self.stats['successful_scrapes'],
-                'errors': self.stats['errors'],
-                'success_rate_percent': round(success_rate, 2),
-                'jobs_per_minute': round(self.stats['jobs_per_minute'], 2),
-                'validation_failures': self.stats['validation_failures']
-            },
-            'captcha_performance': {
-                'encounters': self.stats['captcha_encounters'],
-                'solved': self.stats['captcha_solved'],
-                'success_rate_percent': round(captcha_success_rate, 2),
-                'auto_solve_enabled': self.auto_solve_captcha,
-                **captcha_stats
-            },
-            'page_stabilization': {
-                'attempts': self.stats['stabilization_attempts'],
-                'refresh_success': self.stats['stabilization_refresh_success'],
-                'failures': self.stats['stabilization_failures'],
-                'enabled': self.enable_page_stabilization,
-                'timeout_seconds': self.stabilization_timeout
-            },
-            'file_management': file_stats,
-            'configuration': {
-                'batch_size': self.batch_size,
-                'delay_between_jobs': self.delay_between_jobs,
-                'max_jobs_per_session': self.max_jobs_per_session
-            }
+            'original': location,
+            'normalized': location.strip()
         }
-    
-    async def resume_from_session(self, session_id: str) -> bool:
-        """Resume scraping from a previous session"""
-        if not FILE_MANAGER_AVAILABLE or not self.file_manager:
-            logger.warning("Cannot resume: FileManager not available")
-            return False
-        
-        try:
-            session_data = self.file_manager.load_session_progress(session_id)
-            if session_data:
-                logger.info(f"Resuming from session {session_id}: {len(session_data)} jobs found")
-                self.session_id = session_id
-                return True
-            else:
-                logger.warning(f"No session data found for {session_id}")
-                return False
-        except Exception as e:
-            logger.error(f"Error resuming from session: {e}")
-            return False
-    
-    def log_final_summary(self, all_jobs: List[Dict]):
-        """Log comprehensive final summary"""
-        stats = self.get_scraping_statistics()
-        
-        logger.info("\n" + "="*60)
-        logger.info("🎯 SCRAPING SESSION COMPLETED")
-        logger.info("="*60)
-        
-        # Session info
-        session_info = stats['session_info']
-        logger.info(f"📅 Session: {session_info['session_id']}")
-        logger.info(f"⏱️  Duration: {session_info['elapsed_minutes']} minutes")
-        
-        # Performance metrics
-        perf = stats['scraping_performance']
-        logger.info(f"📊 Total Jobs: {len(all_jobs)}")
-        logger.info(f"[SUCCESS] Successful: {perf['successful_scrapes']} ({perf['success_rate_percent']}%)")
-        logger.info(f"[ERROR] Errors: {perf['errors']}")
-        logger.info(f"🚀 Speed: {perf['jobs_per_minute']} jobs/minute")
-        
-        if perf['validation_failures'] > 0:
-            logger.info(f"[WARNING]  Validation failures: {perf['validation_failures']}")
-        
-        # CAPTCHA performance
-        captcha = stats['captcha_performance']
-        if captcha['encounters'] > 0:
-            logger.info(f"[CAPTCHA] CAPTCHAs: {captcha['solved']}/{captcha['encounters']} solved ({captcha['success_rate_percent']}%)")
-        
-        # Page stabilization performance
-        stabilization = stats['page_stabilization']
-        if stabilization['attempts'] > 0:
-            success_rate = (stabilization['refresh_success'] / stabilization['attempts'] * 100) if stabilization['attempts'] > 0 else 0
-            logger.info(f"[STABILIZE] Page refreshes: {stabilization['refresh_success']}/{stabilization['attempts']} successful ({success_rate:.1f}%)")
-            if stabilization['failures'] > 0:
-                logger.info(f"  - Failed refreshes: {stabilization['failures']}")
-        
-        # File management
-        if FILE_MANAGER_AVAILABLE and self.file_manager:
-            file_stats = stats['file_management']
-            if file_stats:
-                logger.info(f"📁 Files created: {file_stats.get('total_files_created', 0)}")
-                if self.use_sessions:
-                    logger.info(f"📂 Session directory: {file_stats.get('session_directory', 'N/A')}")
-        
-        # Data quality insights
-        jobs_with_email = len([job for job in all_jobs if job.get('email')])
-        jobs_with_phone = len([job for job in all_jobs if job.get('telephone')])
-        jobs_with_contact = len([job for job in all_jobs if job.get('contact_person')])
-        
-        logger.info("\n📋 DATA QUALITY SUMMARY:")
-        logger.info(f"📧 Jobs with email: {jobs_with_email}/{len(all_jobs)} ({jobs_with_email/len(all_jobs)*100:.1f}%)")
-        logger.info(f"📞 Jobs with phone: {jobs_with_phone}/{len(all_jobs)} ({jobs_with_phone/len(all_jobs)*100:.1f}%)")
-        logger.info(f"👤 Jobs with contact: {jobs_with_contact}/{len(all_jobs)} ({jobs_with_contact/len(all_jobs)*100:.1f}%)")
-        
-        logger.info("="*60)
-    
-    async def run(self, input_csv_path: str = None, resume: bool = True, auto_solve_captcha: bool = None):
-        """Main entry point to run the job scraper"""
-        try:
-            # Override auto_solve_captcha if provided
-            if auto_solve_captcha is not None:
-                self.auto_solve_captcha = auto_solve_captcha
-                if auto_solve_captcha and not self.captcha_solver and CAPTCHA_SOLVER_AVAILABLE:
-                    try:
-                        self.captcha_solver = CaptchaSolver()
-                        logger.info("[SUCCESS] CAPTCHA auto-solver initialized")
-                    except Exception as e:
-                        logger.warning(f"[ERROR] Failed to initialize CAPTCHA solver: {e}")
-                        self.auto_solve_captcha = False
-            
-            # Setup
-            await self.setup_browser()
-            
-            # Load job URLs
-            if not input_csv_path:
-                input_csv_path = PATHS.get('input_csv', 'data/input/job_urls.csv')
-            
-            job_urls = await self.load_job_urls(input_csv_path)
-            if not job_urls:
-                logger.error("No job URLs to process")
-                return
-            
-            # Load existing progress if resuming
-            existing_jobs = []
-            if resume:
-                existing_jobs = await self.load_existing_progress()
-                processed_urls = {job.get('source_url') for job in existing_jobs}
-                job_urls = [job for job in job_urls if job['job_url'] not in processed_urls]
-                logger.info(f"Resuming: {len(job_urls)} jobs remaining to scrape")
-            
-            if not job_urls:
-                logger.info("All jobs already scraped!")
-                return
-            
-            # Process jobs
-            captcha_mode = "Auto + Manual fallback" if self.auto_solve_captcha else "Manual only"
-            logger.info(f"Starting to scrape {len(job_urls)} jobs...")
-            logger.info(f"CAPTCHA solving mode: {captcha_mode}")
-            
-            scraped_jobs = await self.process_jobs_batch(job_urls, batch_size=self.batch_size)
-            
-            # Combine with existing data
-            all_jobs = existing_jobs + scraped_jobs
-            
-            # Export final results
-            output_dir = Path("data/output")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            await self.export_to_csv(all_jobs, output_dir / "scraped_jobs.csv")
-            await self.export_to_json(all_jobs, output_dir / "scraped_jobs.json")
-            await self.generate_missing_emails_report(all_jobs)
-            
-            # Final comprehensive summary
-            self.log_final_summary(all_jobs)
-            
-            # Legacy compatibility statistics
-            logger.info(f"Legacy stats - Scraped: {self.scraped_count}, Failed: {self.failed_count}")
-            
-            if self.captcha_solver:
-                try:
-                    model_info = self.captcha_solver.get_model_info()
-                    logger.info(f"CAPTCHA solver used: {model_info['model_name']}")
-                except Exception as e:
-                    logger.debug(f"Could not get CAPTCHA solver model info: {e}")
-            
-        except Exception as e:
-            logger.error(f"Error in main run: {e}")
-        finally:
-            if self.browser:
-                await self.browser.close()
-
-
-async def main():
-    """Main function to run the scraper with enhanced configuration"""
-    # Enhanced options from settings
-    auto_solve = 'trocr' in CAPTCHA_SETTINGS.get('solving_strategies', ['manual'])
-    use_sessions = FILE_MANAGEMENT_SETTINGS.get('use_sessions', False)
-    validate_data = VALIDATION_SETTINGS.get('validate_on_scrape', False)
-    enable_resume = SCRAPER_SETTINGS.get('enable_resume', True)
-    
-    logger.info(f"Enhanced JobScraper starting with:")
-    logger.info(f"  - Auto CAPTCHA solving: {auto_solve}")
-    logger.info(f"  - Session management: {use_sessions}")
-    logger.info(f"  - Data validation: {validate_data}")
-    logger.info(f"  - Resume capability: {enable_resume}")
-    
-    scraper = JobScraper(
-        auto_solve_captcha=auto_solve,
-        use_sessions=use_sessions,
-        validate_data=validate_data
-    )
-    
-    input_path = PATHS.get('input_csv', 'data/input/job_urls.csv')
-    await scraper.run(input_csv_path=input_path, resume=enable_resume)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

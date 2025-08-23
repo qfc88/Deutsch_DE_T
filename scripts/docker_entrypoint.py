@@ -42,25 +42,23 @@ def main():
     
     # Determine which pipeline to run
     if pipeline_version == 'v2':
-        script_path = "scripts/run_automated_pipeline_v2.py"
-        if not Path(script_path).exists():
-            logger.warning("[WARNING] V2 pipeline not found, falling back to V1")
-            script_path = "scripts/run_automated_pipeline.py"
+        script_path = "scripts/run_automated_pipeline.py"  # V2 is now the main pipeline
     elif pipeline_version == 'v1' or pipeline_version == '1':
-        script_path = "scripts/run_automated_pipeline.py"
+        script_path = "scripts/run_automated_pipeline_v1.py"
+        if not Path(script_path).exists():
+            logger.warning("[WARNING] V1 pipeline not found, falling back to main pipeline")
+            script_path = "scripts/run_automated_pipeline.py"
     else:
         logger.warning(f"[WARNING] Unknown pipeline version '{pipeline_version}', defaulting to V2")
-        script_path = "scripts/run_automated_pipeline_v2.py"
-        if not Path(script_path).exists():
-            script_path = "scripts/run_automated_pipeline.py"
+        script_path = "scripts/run_automated_pipeline.py"
     
     # Final confirmation
     logger.info(f"[START] Starting: {script_path}")
     
     try:
         # Import and run the selected pipeline
-        if 'v2' in script_path:
-            from run_automated_pipeline_v2 import main as pipeline_main
+        if 'v1' in script_path:
+            from run_automated_pipeline_v1 import main as pipeline_main
         else:
             from run_automated_pipeline import main as pipeline_main
         
