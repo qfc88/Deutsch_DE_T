@@ -262,7 +262,7 @@ class JobScraperV2(JobScraper):
             
             self.v2_stats['realtime_enhancements'] += 1
             
-            logger.info(f"🔍 Realtime enhancement for {job_data.get('ref_nr', 'unknown')}: missing {'email' if not has_email else ''}{'&' if not has_email and not has_phone else ''}{'phone' if not has_phone else ''}")
+            logger.info(f"[ENHANCE] Realtime enhancement for {job_data.get('ref_nr', 'unknown')}: missing {'email' if not has_email else ''}{'&' if not has_email and not has_phone else ''}{'phone' if not has_phone else ''}")
             
             # Initialize contact scraper if needed
             if not self.contact_scraper and self.contact_scraper_available:
@@ -304,12 +304,12 @@ class JobScraperV2(JobScraper):
                     if enhanced_contact.get('email') and not has_email:
                         job_data['email'] = enhanced_contact['email']
                         job_data['email_source'] = 'realtime_enhancement'
-                        logger.info(f"✅ Enhanced email: {job_data.get('ref_nr')} → {enhanced_contact['email']}")
+                        logger.info(f"[SUCCESS] Enhanced email: {job_data.get('ref_nr')} → {enhanced_contact['email']}")
                     
                     if enhanced_contact.get('phone') and not has_phone:
                         job_data['phone'] = enhanced_contact['phone']
                         job_data['phone_source'] = 'realtime_enhancement'
-                        logger.info(f"✅ Enhanced phone: {job_data.get('ref_nr')} → {enhanced_contact['phone']}")
+                        logger.info(f"[SUCCESS] Enhanced phone: {job_data.get('ref_nr')} → {enhanced_contact['phone']}")
                     
                     # Add enhancement metadata
                     job_data['realtime_enhanced'] = True
@@ -318,7 +318,7 @@ class JobScraperV2(JobScraper):
                     self.v2_stats['enhancement_successes'] += 1
                     return True, job_data
                 else:
-                    logger.info(f"⚠️ No additional contacts found: {job_data.get('ref_nr')}")
+                    logger.info(f"[WARNING] No additional contacts found: {job_data.get('ref_nr')}")
                     self.v2_stats['enhancement_failures'] += 1
                     return True, job_data  # Continue even if enhancement failed
             
@@ -383,7 +383,7 @@ class JobScraperV2(JobScraper):
                         result = await self.db_loader.load_single_job(job_data)
                         if result and result.get('loaded', 0) > 0:
                             self.v2_stats['loaded_count'] += 1
-                            logger.info(f"✅ {job_data.get('ref_nr', 'unknown')} → Database")
+                            logger.info(f"[DATABASE] {job_data.get('ref_nr', 'unknown')} loaded to database")
                         else:
                             self.v2_stats['database_failures'] += 1
                             logger.warning(f"❌ Database load failed: {job_data.get('ref_nr', 'unknown')}")
@@ -404,10 +404,10 @@ class JobScraperV2(JobScraper):
                 self.v2_stats['data_quality_score'] = quality_score
             
             logger.info(f"🎯 V2 Batch processed: {len(processed_jobs)} jobs")
-            logger.info(f"   ✅ Loaded to DB: {self.v2_stats['loaded_count']}")
-            logger.info(f"   🔍 Realtime enhancements: {self.v2_stats['realtime_enhancements']}")
-            logger.info(f"   ✅ Enhancement successes: {self.v2_stats['enhancement_successes']}")
-            logger.info(f"   📊 Quality score: {self.v2_stats['data_quality_score']:.1%}")
+            logger.info(f"   [DATABASE] Loaded to DB: {self.v2_stats['loaded_count']}")
+            logger.info(f"   [ENHANCE] Realtime enhancements: {self.v2_stats['realtime_enhancements']}")
+            logger.info(f"   [SUCCESS] Enhancement successes: {self.v2_stats['enhancement_successes']}")
+            logger.info(f"   [QUALITY] Quality score: {self.v2_stats['data_quality_score']:.1%}")
             
         except Exception as e:
             logger.error(f"Error in V2 save progress: {e}")

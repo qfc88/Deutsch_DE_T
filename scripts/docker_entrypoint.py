@@ -23,39 +23,39 @@ def main():
     # Get pipeline version from environment
     pipeline_version = os.getenv('PIPELINE_VERSION', 'v2').lower()
     
-    logger.info("🐳 Docker Container Starting...")
-    logger.info(f"📋 Pipeline Version: {pipeline_version}")
+    logger.info("[DOCKER] Container Starting...")
+    logger.info(f"[CONFIG] Pipeline Version: {pipeline_version}")
     
     # Environment configuration summary
-    logger.info("📊 Configuration Summary:")
-    logger.info(f"   🔧 Automation Mode: {os.getenv('AUTOMATION_MODE', 'false')}")
-    logger.info(f"   🤖 Auto Solve CAPTCHA: {os.getenv('AUTO_SOLVE_CAPTCHA', 'false')}")
-    logger.info(f"   👁️  Headless Mode: {os.getenv('SCRAPER_HEADLESS', 'true')}")
-    logger.info(f"   📦 Batch Size: {os.getenv('SCRAPER_BATCH_SIZE', '50')}")
-    logger.info(f"   💾 Database: {os.getenv('DB_NAME', 'scrape')}")
+    logger.info("[CONFIG] Configuration Summary:")
+    logger.info(f"   [CONFIG] Automation Mode: {os.getenv('AUTOMATION_MODE', 'false')}")
+    logger.info(f"   [CONFIG] Auto Solve CAPTCHA: {os.getenv('AUTO_SOLVE_CAPTCHA', 'false')}")
+    logger.info(f"   [CONFIG] Headless Mode: {os.getenv('SCRAPER_HEADLESS', 'true')}")
+    logger.info(f"   [CONFIG] Batch Size: {os.getenv('SCRAPER_BATCH_SIZE', '50')}")
+    logger.info(f"   [CONFIG] Database: {os.getenv('DB_NAME', 'scrape')}")
     
     if pipeline_version == 'v2':
-        logger.info("✨ V2 Features:")
-        logger.info(f"   ✅ Comprehensive Validation: {os.getenv('ENABLE_COMPREHENSIVE_VALIDATION', 'true')}")
-        logger.info(f"   🧹 Enhanced Cleaning: {os.getenv('ENABLE_ENHANCED_CLEANING', 'true')}")
-        logger.info(f"   💾 Single DB Load: {os.getenv('ENABLE_SINGLE_DB_LOAD', 'true')}")
+        logger.info("[V2] Features:")
+        logger.info(f"   [FEATURE] Comprehensive Validation: {os.getenv('ENABLE_COMPREHENSIVE_VALIDATION', 'true')}")
+        logger.info(f"   [FEATURE] Enhanced Cleaning: {os.getenv('ENABLE_ENHANCED_CLEANING', 'true')}")
+        logger.info(f"   [FEATURE] Single DB Load: {os.getenv('ENABLE_SINGLE_DB_LOAD', 'true')}")
     
     # Determine which pipeline to run
     if pipeline_version == 'v2':
         script_path = "scripts/run_automated_pipeline_v2.py"
         if not Path(script_path).exists():
-            logger.warning("⚠️ V2 pipeline not found, falling back to V1")
+            logger.warning("[WARNING] V2 pipeline not found, falling back to V1")
             script_path = "scripts/run_automated_pipeline.py"
     elif pipeline_version == 'v1' or pipeline_version == '1':
         script_path = "scripts/run_automated_pipeline.py"
     else:
-        logger.warning(f"⚠️ Unknown pipeline version '{pipeline_version}', defaulting to V2")
+        logger.warning(f"[WARNING] Unknown pipeline version '{pipeline_version}', defaulting to V2")
         script_path = "scripts/run_automated_pipeline_v2.py"
         if not Path(script_path).exists():
             script_path = "scripts/run_automated_pipeline.py"
     
     # Final confirmation
-    logger.info(f"🚀 Starting: {script_path}")
+    logger.info(f"[START] Starting: {script_path}")
     
     try:
         # Import and run the selected pipeline
@@ -69,8 +69,8 @@ def main():
         asyncio.run(pipeline_main())
         
     except ImportError as e:
-        logger.error(f"❌ Failed to import pipeline: {e}")
-        logger.info("🔄 Falling back to direct execution")
+        logger.error(f"[ERROR] Failed to import pipeline: {e}")
+        logger.info("[FALLBACK] Falling back to direct execution")
         
         # Fallback to direct execution
         import subprocess
@@ -78,17 +78,17 @@ def main():
             result = subprocess.run([sys.executable, script_path], check=True)
             sys.exit(result.returncode)
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ Pipeline execution failed: {e}")
+            logger.error(f"[ERROR] Pipeline execution failed: {e}")
             sys.exit(1)
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
+            logger.error(f"[ERROR] Unexpected error: {e}")
             sys.exit(1)
     
     except Exception as e:
-        logger.error(f"❌ Pipeline error: {e}")
+        logger.error(f"[ERROR] Pipeline error: {e}")
         sys.exit(1)
     
-    logger.info("✅ Pipeline completed successfully")
+    logger.info("[SUCCESS] Pipeline completed successfully")
 
 if __name__ == "__main__":
     main()

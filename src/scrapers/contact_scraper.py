@@ -443,7 +443,7 @@ class ContactScraper:
             ref_nr = job_data.get('ref_nr', 'unknown')
             company_name = job_data.get('company_name', 'Unknown')
             
-            logger.info(f"🔍 Realtime enhancement: {company_name} ({ref_nr})")
+            logger.info(f"[ENHANCE] Realtime enhancement: {company_name} ({ref_nr})")
             
             # Check if we already have complete contact info
             has_email = job_data.get('current_email') and str(job_data.get('current_email')).strip()
@@ -472,23 +472,23 @@ class ContactScraper:
                         # Add missing contacts
                         if not has_email and website_contacts.get('email'):
                             enhanced_contacts['email'] = website_contacts['email']
-                            logger.info(f"✅ Found email: {website_contacts['email']}")
+                            logger.info(f"[SUCCESS] Found email: {website_contacts['email']}")
                         
                         if not has_phone and website_contacts.get('phone'):
                             enhanced_contacts['phone'] = website_contacts['phone']
-                            logger.info(f"✅ Found phone: {website_contacts['phone']}")
+                            logger.info(f"[SUCCESS] Found phone: {website_contacts['phone']}")
                         
                         # Add source information
                         enhanced_contacts['enhancement_source'] = 'company_website'
                         enhanced_contacts['enhanced_from_url'] = company_website
                         
                     else:
-                        logger.info(f"⚠️ No contacts found on website: {company_website}")
+                        logger.info(f"[WARNING] No contacts found on website: {company_website}")
                 
                 except asyncio.TimeoutError:
-                    logger.warning(f"⏰ Website scraping timeout: {company_website}")
+                    logger.warning(f"[TIMEOUT] Website scraping timeout: {company_website}")
                 except Exception as e:
-                    logger.warning(f"❌ Website scraping error: {company_website} - {e}")
+                    logger.warning(f"[ERROR] Website scraping error: {company_website} - {e}")
             
             # If still missing info, try alternative approaches
             if not enhanced_contacts.get('email') and not has_email:
@@ -497,7 +497,7 @@ class ContactScraper:
                 if guessed_email:
                     enhanced_contacts['email'] = guessed_email
                     enhanced_contacts['email_confidence'] = 'guessed'
-                    logger.info(f"🤔 Guessed email: {guessed_email}")
+                    logger.info(f"[GUESS] Guessed email: {guessed_email}")
             
             return enhanced_contacts if enhanced_contacts else None
             
