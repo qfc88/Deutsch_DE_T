@@ -6,9 +6,9 @@ services:
     image: postgres:15-alpine
     container_name: job-scraper-db
     environment:
-      POSTGRES_DB: scrape
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: myass
+      POSTGRES_DB: job_market_data
+      POSTGRES_USER: jobscraper
+      POSTGRES_PASSWORD: working
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -16,7 +16,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d scrape"]
+      test: ["CMD-SHELL", "pg_isready -U jobscraper -d job_market_data"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -1,16 +1,19 @@
-# Project Structure
-
-This document describes the organized directory structure of the job scraper project.
 
 ## Root Directory
 ```
 job-scraper/
 ├── README.md              # Main project documentation
 ├── requirements.txt       # Python dependencies
-├── docker-compose.yml     # Docker orchestration
+├── docker-compose.yml     # Docker orchestration with new database
 ├── Dockerfile*            # Container definitions
 ├── pytest.ini            # Test configuration
-└── PROJECT_STRUCTURE.md   # This file
+├── PROJECT_STRUCTURE.md   # This file
+├── start_scheduler.bat    # Windows scheduler launcher
+├── test_scheduler.bat     # Windows test runner
+├── start_scheduler.sh     # Ubuntu scheduler launcher
+├── test_scheduler.sh      # Ubuntu test runner
+├── setup_ubuntu.sh        # Ubuntu auto-setup script
+└── install_systemd.sh     # Ubuntu systemd service installer
 ```
 
 ## Source Code (`src/`)
@@ -47,6 +50,7 @@ scripts/
 ├── run_automated_pipeline.py   # Docker automation pipeline
 ├── run_job_scraper.py          # Job scraping only
 ├── run_link_scraper.py         # URL collection only
+├── schedule_scraper.py         # Vietnam timezone scheduler (NEW)
 ├── process_missing_emails.py   # Email processing
 ├── setup_database.py          # Database initialization
 └── test_integration.py        # Integration testing
@@ -107,6 +111,19 @@ data/
 python scripts/run_full_pipeline.py
 ```
 
+### For Scheduled Scraping (2 AM Vietnam Time):
+**Windows:**
+```bash
+start_scheduler.bat
+```
+
+**Ubuntu Server:**
+```bash
+./start_scheduler.sh           # Foreground
+./start_scheduler.sh background # Background
+./install_systemd.sh           # System service
+```
+
 ### For Manual Database Loading:
 ```bash
 python tools/simple_load.py
@@ -117,8 +134,7 @@ python tools/simple_load.py
 python debug/debug_browser.py
 ```
 
-This organization improves:
-- ✅ Clear separation of concerns
-- ✅ Easier maintenance and debugging
-- ✅ Better code organization
-- ✅ Simplified deployment and testing
+### For Ubuntu Server Setup:
+```bash
+./setup_ubuntu.sh              # Complete auto-setup
+```
