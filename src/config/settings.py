@@ -69,7 +69,7 @@ DATABASE_SETTINGS = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'port': int(os.getenv('DB_PORT', 5432)),
     'database': os.getenv('DB_NAME', 'job_market_data'),
-    'username': os.getenv('DB_USER', 'jobscraper'),
+    'username': os.getenv('DB_USER', 'postgres'),
     'password': os.getenv('DB_PASSWORD', 'working'),
     'min_connections': 5,
     'max_connections': 20,
