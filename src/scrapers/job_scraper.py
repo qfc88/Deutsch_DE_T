@@ -681,10 +681,21 @@ class JobScraper:
             
             # Navigate to job page
             await page.goto(job_url, timeout=30000)
-            await page.wait_for_load_state('networkidle', timeout=10000)
+            await page.wait_for_load_state('networkidle', timeout=15000)
             
             # Handle cookie consent dialog
             await self.handle_cookie_consent(page)
+            
+            # Wait for main content to load after cookie consent
+            await asyncio.sleep(3)
+            
+            # Wait for key elements to be present before extraction
+            try:
+                await page.wait_for_selector('#detail-kopfbereich-titel', timeout=10000)
+                logger.debug("Main job content loaded successfully")
+            except Exception as e:
+                logger.warning(f"Main job content loading timeout: {e}")
+                # Continue anyway - might still be able to extract some data
             
             # NEW: Check for external redirect FIRST
             external_data = None
