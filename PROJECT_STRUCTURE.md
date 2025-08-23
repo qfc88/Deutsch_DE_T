@@ -8,12 +8,10 @@ job-scraper/
 ├── Dockerfile*            # Container definitions
 ├── pytest.ini            # Test configuration
 ├── PROJECT_STRUCTURE.md   # This file
-├── start_scheduler.bat    # Windows scheduler launcher
-├── test_scheduler.bat     # Windows test runner
-├── start_scheduler.sh     # Ubuntu scheduler launcher
-├── test_scheduler.sh      # Ubuntu test runner
-├── setup_ubuntu.sh        # Ubuntu auto-setup script
-└── install_systemd.sh     # Ubuntu systemd service installer
+├── run_2am_tonight.sh     # Ubuntu 2 AM scheduler (MAIN)
+├── test_2am_now.sh        # Ubuntu immediate test runner
+└── archive/               # Archived old scripts
+    └── old_scripts/       # Previous scheduler versions
 ```
 
 ## Source Code (`src/`)
@@ -112,16 +110,15 @@ python scripts/run_full_pipeline.py
 ```
 
 ### For Scheduled Scraping (2 AM Vietnam Time):
-**Windows:**
+**Ubuntu Server (MAIN):**
 ```bash
-start_scheduler.bat
+./run_2am_tonight.sh           # Wait for 2 AM tonight
+./test_2am_now.sh             # Test immediately
 ```
 
-**Ubuntu Server:**
+**Background Mode:**
 ```bash
-./start_scheduler.sh           # Foreground
-./start_scheduler.sh background # Background
-./install_systemd.sh           # System service
+nohup ./run_2am_tonight.sh > scheduler.log 2>&1 &
 ```
 
 ### For Manual Database Loading:
@@ -134,7 +131,13 @@ python tools/simple_load.py
 python debug/debug_browser.py
 ```
 
-### For Ubuntu Server Setup:
-```bash
-./setup_ubuntu.sh              # Complete auto-setup
+## Archive (`archive/`)
+Previously used scripts and utilities:
+```
+archive/
+└── old_scripts/               # Legacy scheduler scripts
+    ├── setup_ubuntu.sh        # Complex Ubuntu setup
+    ├── install_systemd.sh     # Systemd service installer  
+    ├── start_scheduler.*      # Old scheduler versions
+    └── run_2am_tonight.py     # Python-based schedulers
 ```
