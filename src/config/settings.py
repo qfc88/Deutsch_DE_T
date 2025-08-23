@@ -227,7 +227,7 @@ TESTING_SETTINGS = {
 
 # Production environment settings
 if os.getenv('ENVIRONMENT') == 'production':
-    SCRAPER_SETTINGS['headless'] = False
+    SCRAPER_SETTINGS['headless'] = True
     SCRAPER_SETTINGS['batch_size'] = 50
     LOGGING_SETTINGS['level'] = 'WARNING'
     DATABASE_SETTINGS['min_connections'] = 10
