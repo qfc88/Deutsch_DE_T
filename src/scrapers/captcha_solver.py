@@ -9,8 +9,6 @@ import cv2
 import numpy as np
 from PIL import Image
 import logging
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
-from logger import get_scraper_logger
 from typing import Optional, Tuple, Dict
 import io
 import asyncio
@@ -32,8 +30,13 @@ except ImportError:
     TROCR_AVAILABLE = False
     logging.warning("TrOCR not available. Install transformers and torch for local OCR.")
 
-# Initialize logger
-logger = get_scraper_logger('scrapers.captcha_solver')
+# Initialize logger after path setup
+sys.path.append(str(Path(__file__).parent.parent / "utils"))
+try:
+    from logger import get_scraper_logger
+    logger = get_scraper_logger('scrapers.captcha_solver')
+except ImportError:
+    logger = logging.getLogger(__name__)
 
 # Manual 2Captcha implementation using requests
 try:
