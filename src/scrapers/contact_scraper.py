@@ -437,6 +437,74 @@ class ContactScraper:
         
         return cleaned_data
     
+    async def enhance_single_job_contact(self, job_data: Dict) -> Optional[Dict]:
+        """Enhance single job contact information for realtime processing"""
+        try:
+            ref_nr = job_data.get('ref_nr', 'unknown')
+            company_name = job_data.get('company_name', 'Unknown')
+            
+            logger.info(f"🔍 Realtime enhancement: {company_name} ({ref_nr})")
+            
+            # Check if we already have complete contact info
+            has_email = job_data.get('current_email') and str(job_data.get('current_email')).strip()
+            has_phone = job_data.get('current_phone') and str(job_data.get('current_phone')).strip()
+            
+            if has_email and has_phone:
+                return None  # No enhancement needed
+            
+            # Try company website first
+            company_website = job_data.get('company_website')
+            if not company_website and job_data.get('job_url'):
+                # Extract domain from job URL
+                company_website = self._extract_base_domain(job_data['job_url'])
+            
+            enhanced_contacts = {}
+            
+            if company_website:
+                try:
+                    # Scrape company website for contact info with timeout
+                    website_contacts = await asyncio.wait_for(
+                        self.scrape_company_website(company_website),
+                        timeout=25  # 25 second timeout
+                    )
+                    
+                    if website_contacts:
+                        # Add missing contacts
+                        if not has_email and website_contacts.get('email'):
+                            enhanced_contacts['email'] = website_contacts['email']
+                            logger.info(f"✅ Found email: {website_contacts['email']}")
+                        
+                        if not has_phone and website_contacts.get('phone'):
+                            enhanced_contacts['phone'] = website_contacts['phone']
+                            logger.info(f"✅ Found phone: {website_contacts['phone']}")
+                        
+                        # Add source information
+                        enhanced_contacts['enhancement_source'] = 'company_website'
+                        enhanced_contacts['enhanced_from_url'] = company_website
+                        
+                    else:
+                        logger.info(f"⚠️ No contacts found on website: {company_website}")
+                
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Website scraping timeout: {company_website}")
+                except Exception as e:
+                    logger.warning(f"❌ Website scraping error: {company_website} - {e}")
+            
+            # If still missing info, try alternative approaches
+            if not enhanced_contacts.get('email') and not has_email:
+                # Try to generate educated guesses based on company name
+                guessed_email = self._generate_email_guesses(company_name, company_website)
+                if guessed_email:
+                    enhanced_contacts['email'] = guessed_email
+                    enhanced_contacts['email_confidence'] = 'guessed'
+                    logger.info(f"🤔 Guessed email: {guessed_email}")
+            
+            return enhanced_contacts if enhanced_contacts else None
+            
+        except Exception as e:
+            logger.error(f"Error in single job contact enhancement: {e}")
+            return None
+    
     async def enhance_job_contacts(self, jobs_data: List[Dict]) -> List[Dict]:
         """Enhance job data with additional contact information"""
         enhanced_jobs = []
@@ -582,6 +650,52 @@ class ContactScraper:
         
         return True
     
+    def _generate_email_guesses(self, company_name: str, company_website: str = None) -> Optional[str]:
+        """Generate educated email guesses based on company name and website"""
+        try:
+            if not company_name:
+                return None
+            
+            # Clean company name
+            clean_name = re.sub(r'[^\w\s]', '', company_name.lower())
+            clean_name = re.sub(r'\s+', '', clean_name)
+            
+            # Remove common suffixes
+            suffixes = ['gmbh', 'ag', 'kg', 'ohg', 'mbh', 'co', 'ltd', 'inc', 'corp']
+            for suffix in suffixes:
+                clean_name = clean_name.replace(suffix, '')
+            
+            # Get domain from website
+            domain = None
+            if company_website:
+                try:
+                    parsed = urlparse(company_website if company_website.startswith('http') else f'http://{company_website}')
+                    domain = parsed.netloc or parsed.path
+                    domain = domain.replace('www.', '')
+                except:
+                    pass
+            
+            # Generate email guesses
+            if domain and clean_name:
+                # Common German business email patterns
+                email_patterns = [
+                    f"bewerbung@{domain}",
+                    f"jobs@{domain}",
+                    f"hr@{domain}",
+                    f"personal@{domain}",
+                    f"info@{domain}",
+                    f"kontakt@{domain}"
+                ]
+                
+                # Return first reasonable guess
+                return email_patterns[0] if email_patterns else None
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error generating email guesses: {e}")
+            return None
+
     def _extract_base_domain(self, url: str) -> str:
         """Extract base domain from URL"""
         try:

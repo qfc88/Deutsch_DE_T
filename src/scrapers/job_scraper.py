@@ -916,7 +916,7 @@ class JobScraper:
             }
     
     async def save_progress(self, scraped_jobs: List[Dict], batch_number: int = None):
-        """Save current progress using FileManager or legacy method"""
+        """Save current progress using FileManager or legacy method + Database"""
         try:
             # Validate data if JobModel is available
             validated_jobs = scraped_jobs
@@ -939,6 +939,27 @@ class JobScraper:
                     except Exception as e:
                         logger.error(f"Validation error for job: {e}")
                         validated_jobs.append(job_data)  # Keep original if validation fails
+            
+            # REALTIME DATABASE LOADING
+            try:
+                from database.data_loader import JobDataLoader
+                loader = JobDataLoader()
+                
+                # Load each job immediately into database
+                for job_data in validated_jobs:
+                    try:
+                        result = await loader.load_single_job(job_data)
+                        if result and result.get('loaded', 0) > 0:
+                            logger.info(f"💾 Job {job_data.get('ref_nr', 'no-ref')} loaded to database")
+                        else:
+                            logger.warning(f"⚠️ Job {job_data.get('ref_nr', 'no-ref')} failed to load to database")
+                    except Exception as e:
+                        logger.error(f"Database load error for job {job_data.get('ref_nr', 'no-ref')}: {e}")
+                        
+                logger.info(f"🚀 REALTIME DB: Attempted to load {len(validated_jobs)} jobs to database")
+            except Exception as e:
+                logger.error(f"Database loading module error: {e}")
+                logger.info("Continuing with file-only saving...")
             
             # Use FileManager if available
             if FILE_MANAGER_AVAILABLE and self.file_manager:

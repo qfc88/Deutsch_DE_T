@@ -49,9 +49,14 @@ services:
       SCRAPER_BATCH_SIZE: 50
       MAX_JOBS_PER_SESSION: 1000
       
-      # Enable automation mode
+      # Enable V2 automation mode with enhanced features
       AUTOMATION_MODE: "true"
       AUTO_SOLVE_CAPTCHA: "true"
+      PIPELINE_VERSION: "v2"
+      ENABLE_COMPREHENSIVE_VALIDATION: "true"
+      ENABLE_ENHANCED_CLEANING: "true"
+      ENABLE_SINGLE_DB_LOAD: "true"
+      ENABLE_REALTIME_ENHANCEMENT: "true"
       
     volumes:
       - ./data:/app/data

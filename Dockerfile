@@ -83,5 +83,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import sys; sys.path.append('src/config'); from settings import validate_settings; exit(0 if not validate_settings() else 1)"
 
-# Default command - run full pipeline
-CMD ["python", "scripts/run_automated_pipeline.py"]
+# Default command - run dynamic entrypoint (supports V1/V2)
+CMD ["python", "scripts/docker_entrypoint.py"]

@@ -487,6 +487,16 @@ class JobDataLoader:
         
         return inserted_count, duplicate_count
     
+    async def load_single_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Load a single job into database realtime"""
+        try:
+            # Process single job as list
+            result = await self.process_job_data([job_data], source_file="realtime")
+            return {'loaded': 1 if result else 0, 'job_id': job_data.get('ref_nr', 'unknown')}
+        except Exception as e:
+            logger.error(f"Error loading single job: {e}")
+            return {'loaded': 0, 'error': str(e)}
+
     async def load_from_json_file(self, file_path: str) -> bool:
         """Load job data from JSON file"""
         try:
