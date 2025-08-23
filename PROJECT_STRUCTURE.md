@@ -1,0 +1,124 @@
+# Project Structure
+
+This document describes the organized directory structure of the job scraper project.
+
+## Root Directory
+```
+job-scraper/
+├── README.md              # Main project documentation
+├── requirements.txt       # Python dependencies
+├── docker-compose.yml     # Docker orchestration
+├── Dockerfile*            # Container definitions
+├── pytest.ini            # Test configuration
+└── PROJECT_STRUCTURE.md   # This file
+```
+
+## Source Code (`src/`)
+Core application source code organized by functionality:
+```
+src/
+├── config/                # Configuration files
+│   ├── settings.py        # Application settings
+│   └── selectors.py       # Web selectors
+├── database/              # Database layer
+│   ├── connection.py      # Database connections
+│   ├── data_loader.py     # Data loading utilities
+│   └── schema.sql         # Database schema
+├── models/                # Data models
+│   └── job_model.py       # Job data structures
+├── scrapers/              # Scraping components
+│   ├── job_scraper.py     # Main job scraper
+│   ├── link_job.py        # URL collection
+│   ├── contact_scraper.py # Contact extraction
+│   ├── captcha_solver.py  # CAPTCHA handling
+│   └── external_link_handler.py # External link processing
+└── utils/                 # Utility functions
+    ├── data_validator.py  # Data validation
+    ├── file_manager.py    # File operations
+    ├── logger.py          # Logging utilities
+    └── session_manager.py # Session handling
+```
+
+## Scripts (`scripts/`)
+Executable scripts for different operations:
+```
+scripts/
+├── run_full_pipeline.py        # Complete pipeline execution
+├── run_automated_pipeline.py   # Docker automation pipeline
+├── run_job_scraper.py          # Job scraping only
+├── run_link_scraper.py         # URL collection only
+├── process_missing_emails.py   # Email processing
+├── setup_database.py          # Database initialization
+└── test_integration.py        # Integration testing
+```
+
+## Tools (`tools/`)
+Standalone utility tools and scripts:
+```
+tools/
+├── simple_load.py         # Manual database loader
+└── update_start_dates.py  # Date field updater
+```
+
+## Debug (`debug/`)
+Development and debugging utilities:
+```
+debug/
+├── debug_browser.py           # Browser debugging
+├── debug_contact_extraction.py # Contact scraper debugging
+└── run_debug.bat             # Windows debug launcher
+```
+
+## Tests (`tests/`)
+Test files organized by category:
+```
+tests/
+├── manual/                # Manual testing scripts
+│   ├── test_core_components.py
+│   ├── test_date_parsing.py
+│   ├── test_email_cleaning.py
+│   ├── test_external_detection.py
+│   └── test_fix.py
+├── test_scrapers/         # Scraper unit tests
+└── test_utils/            # Utility unit tests
+```
+
+## Data (`data/`)
+Data storage and processing:
+```
+data/
+├── input/                 # Input data files
+├── output/               # Scraped data output
+│   └── YYYYMMDD_HHMMSS/  # Session-based organization
+├── backup/               # Data backups
+├── logs/                 # Application logs
+└── temp/                 # Temporary files
+```
+
+## Configuration Files
+- `.env` / `.env.docker`: Environment variables
+- `.gitignore`: Git ignore rules
+- `docker-compose.yml`: Docker services configuration
+
+## Usage
+
+### For End-to-End Scraping:
+```bash
+python scripts/run_full_pipeline.py
+```
+
+### For Manual Database Loading:
+```bash
+python tools/simple_load.py
+```
+
+### For Development/Debugging:
+```bash
+python debug/debug_browser.py
+```
+
+This organization improves:
+- ✅ Clear separation of concerns
+- ✅ Easier maintenance and debugging
+- ✅ Better code organization
+- ✅ Simplified deployment and testing
