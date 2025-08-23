@@ -9,6 +9,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright, Page
 import json
 import logging
+from logger import get_scraper_logger, log_error
 from typing import Dict, List, Optional
 import re
 from datetime import datetime
@@ -72,7 +73,7 @@ except ImportError:
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_scraper_logger('scrapers.job_scraper')
 
 class JobScraper:
     def __init__(self, auto_solve_captcha: bool = True, use_sessions: bool = None, validate_data: bool = None):
