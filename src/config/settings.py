@@ -19,13 +19,13 @@ TWOCAPTCHA_API_KEY = "5865b4e02e5bc91f671a60bc18fd75d1"
 
 # Main scraper settings
 SCRAPER_SETTINGS = {
-    'headless': True,              # Set to True for production
+    'headless': False,             # Set to False for local debugging, True for Docker/production
     'timeout': 30000,               # Page load timeout in milliseconds
     'delay_between_jobs': 1,        # Delay between job scraping in seconds
-    'batch_size': 10,               # Number of jobs to process before saving progress (increased)
-    'max_retries': 3,               # Max retries for failed jobs
-    'save_every_n_jobs': 10,        # Save progress every N jobs
-    'max_jobs_per_session': 1000,   # Maximum jobs to scrape in one session
+    'batch_size': 2,                # Number of jobs to process before saving progress (reduced for debugging)
+    'max_retries': 1,               # Max retries for failed jobs (reduced for debugging)
+    'save_every_n_jobs': 2,         # Save progress every N jobs (reduced for debugging)
+    'max_jobs_per_session': 10,     # Maximum jobs to scrape in one session (reduced for debugging)
     'enable_resume': True,          # Enable resume functionality
     'use_sessions': True,           # Use session-based file management
 }
@@ -166,7 +166,7 @@ CONTACT_SCRAPER_SETTINGS = {
 # =============================================================================
 
 LOGGING_SETTINGS = {
-    'level': 'INFO',                         # DEBUG, INFO, WARNING, ERROR
+    'level': 'DEBUG',                        # DEBUG, INFO, WARNING, ERROR - Set to DEBUG for troubleshooting
     'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     'date_format': '%Y-%m-%d %H:%M:%S',
     'enable_file_logging': True,
