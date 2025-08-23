@@ -190,7 +190,7 @@ class AutomatedPipeline:
             return 0
     
     async def run_database_operations(self):
-        """Load data into database"""
+        """Load data into database from JSON batch files"""
         logger.info("💾 DATABASE: Loading scraped data...")
         
         try:
@@ -198,14 +198,20 @@ class AutomatedPipeline:
             
             loader = JobDataLoader()
             
-            # Load main scraped jobs
-            csv_path = Path(PATHS['output_dir']) / "scraped_jobs.csv"
-            if csv_path.exists():
-                result = await loader.load_jobs_from_csv(str(csv_path))
-                logger.info(f"[SUCCESS] Database loading completed: {result.get('loaded', 0)} jobs loaded")
-                return result.get('loaded', 0)
+            # Find latest session directory with batch files
+            output_dir = Path(PATHS['output_dir'])
+            session_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
+            if session_dirs:
+                latest_session = max(session_dirs, key=lambda x: x.name)
+                logger.info(f"📁 Found session directory: {latest_session.name}")
+                
+                # Load batch files from latest session
+                result = await loader.load_batch_files(str(latest_session))
+                loaded_count = result.get('loaded', 0)
+                logger.info(f"✅ Database loading completed: {loaded_count} jobs loaded from batch files")
+                return loaded_count
             else:
-                logger.warning("[WARNING] No CSV file found for database loading")
+                logger.warning("⚠️ No session directories found for database loading")
                 return 0
                 
         except Exception as e:
