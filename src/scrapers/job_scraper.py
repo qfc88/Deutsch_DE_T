@@ -30,7 +30,7 @@ except ImportError:
                                    VALIDATION_SETTINGS, FILE_MANAGEMENT_SETTINGS, PATHS)
     except ImportError as e:
         raise ImportError(
-            f"❌ Settings import failed: {e}\n"
+            f"[ERROR] Settings import failed: {e}\n"
             "Please ensure src/config/settings.py exists and contains required settings."
         )
 
@@ -94,10 +94,9 @@ class JobScraper:
         self.max_jobs_per_session = SCRAPER_SETTINGS.get('max_jobs_per_session', 1000)
         self.enable_resume = SCRAPER_SETTINGS.get('enable_resume', True)
         
-        # Post-CAPTCHA stabilization settings
+        # Post-CAPTCHA stabilization settings (simplified)
         self.enable_page_stabilization = SCRAPER_SETTINGS.get('enable_page_stabilization', True)
         self.stabilization_timeout = SCRAPER_SETTINGS.get('stabilization_timeout', 30)
-        self.prefer_new_tab = SCRAPER_SETTINGS.get('prefer_new_tab', False)
         
         # Session and validation settings
         self.use_sessions = use_sessions if use_sessions is not None else FILE_MANAGEMENT_SETTINGS.get('use_sessions', False)
@@ -114,11 +113,11 @@ class JobScraper:
         if FILE_MANAGER_AVAILABLE and self.use_sessions:
             try:
                 self.file_manager = FileManager()
-                logger.info("✅ FileManager initialized with session support")
+                logger.info("[SUCCESS] FileManager initialized with session support")
                 if self.session_id:
                     logger.info(f"Session ID: {self.session_id}")
             except Exception as e:
-                logger.warning(f"❌ Failed to initialize FileManager: {e}")
+                logger.warning(f"[ERROR] Failed to initialize FileManager: {e}")
                 self.use_sessions = False
         
         # Initialize statistics tracking
@@ -131,10 +130,9 @@ class JobScraper:
             'validation_failures': 0,
             'session_start_time': datetime.now(),
             'jobs_per_minute': 0.0,
-            # New stabilization statistics
+            # Stabilization statistics (simplified)
             'stabilization_attempts': 0,
             'stabilization_refresh_success': 0,
-            'stabilization_newtab_success': 0,
             'stabilization_failures': 0
         }
         
@@ -143,13 +141,13 @@ class JobScraper:
         if auto_solve_captcha and CAPTCHA_SOLVER_AVAILABLE:
             try:
                 self.captcha_solver = CaptchaSolver()
-                logger.info("✅ CAPTCHA auto-solver initialized")
+                logger.info("[SUCCESS] CAPTCHA auto-solver initialized")
             except Exception as e:
-                logger.warning(f"❌ Failed to initialize CAPTCHA solver: {e}")
+                logger.warning(f"[ERROR] Failed to initialize CAPTCHA solver: {e}")
                 logger.info("💡 Falling back to manual CAPTCHA solving")
                 self.auto_solve_captcha = False
         elif auto_solve_captcha and not CAPTCHA_SOLVER_AVAILABLE:
-            logger.warning("❌ CAPTCHA auto-solver requested but not available")
+            logger.warning("[ERROR] CAPTCHA auto-solver requested but not available")
             logger.info("💡 Install requirements: pip install transformers torch torchvision")
             logger.info("💡 Falling back to manual CAPTCHA solving")
             self.auto_solve_captcha = False
@@ -247,9 +245,9 @@ class JobScraper:
         
         # Initialize external link handler AFTER context is created
         self.external_handler = ExternalLinkHandler(self.context)
-        logger.info("✅ External link handler initialized with context")
+        logger.info("[SUCCESS] External link handler initialized with context")
         
-        logger.info("✅ Browser setup completed with enhanced configuration")
+        logger.info("[SUCCESS] Browser setup completed with enhanced configuration")
         logger.info(f"Headless: {SCRAPER_SETTINGS.get('headless', False)}, "
                    f"Viewport: {BROWSER_SETTINGS.get('viewport', {})}")
     
@@ -331,8 +329,11 @@ class JobScraper:
                 return await self._handle_manual_captcha(page)
             else:
                 # No captcha present - check if contact info is already available
-                contact_info_available = await page.query_selector(self.selectors['application_link'])
-                if contact_info_available:
+                phone_available = await page.query_selector(self.selectors['contact_phone'])
+                email_available = await page.query_selector(self.selectors['contact_email'])
+                contact_address_available = await page.query_selector(self.selectors['contact_address'])
+                
+                if phone_available or email_available or contact_address_available:
                     logger.debug("Contact info available (no CAPTCHA required)")
                     return True
                 else:
@@ -412,61 +413,22 @@ class JobScraper:
     
     async def stabilize_page_after_captcha(self, page: Page, job_url: str) -> Optional[Page]:
         """
-        Stabilize page after CAPTCHA solving to handle rendering issues
-        Options: 1) Refresh current page, 2) Open new tab, 3) Reload completely
+        Simple page refresh after CAPTCHA solving - no tab creation to avoid reference issues
         """
         try:
-            logger.info("[STABILIZE] Stabilizing page after CAPTCHA...")
+            logger.info("[STABILIZE] Refreshing page after CAPTCHA...")
             self.stats['stabilization_attempts'] += 1
             
-            # Strategy selection based on configuration
-            if self.prefer_new_tab:
-                # Try new tab first if preferred
-                logger.info("[NEW-TAB] Trying new tab approach (preferred)...")
-                new_page = await self._create_fresh_page(job_url)
-                if new_page:
-                    logger.info("[OK] Page stabilized with new tab")
-                    self.stats['stabilization_newtab_success'] += 1
-                    # Close the old problematic page
-                    try:
-                        await page.close()
-                    except:
-                        pass  # Ignore errors when closing old page
-                    return new_page
-                
-                # Fallback to page refresh if new tab failed
-                logger.info("[REFRESH] New tab failed, trying page refresh...")
-                refresh_success = await self._try_page_refresh(page)
-                if refresh_success:
-                    logger.info("[OK] Page stabilized with refresh fallback")
-                    self.stats['stabilization_refresh_success'] += 1
-                    return page
+            # Simple page refresh only - no tab creation
+            refresh_success = await self._try_page_refresh(page)
+            if refresh_success:
+                logger.info("[OK] Page stabilized with refresh")
+                self.stats['stabilization_refresh_success'] += 1
+                return page
             else:
-                # Default: Try simple page refresh first
-                logger.info("[REFRESH] Trying page refresh...")
-                refresh_success = await self._try_page_refresh(page)
-                if refresh_success:
-                    logger.info("[OK] Page stabilized with simple refresh")
-                    self.stats['stabilization_refresh_success'] += 1
-                    return page
-                
-                # Fallback to new tab if refresh failed
-                logger.info("[NEW-TAB] Page refresh failed, trying new tab approach...")
-                new_page = await self._create_fresh_page(job_url)
-                if new_page:
-                    logger.info("[OK] Page stabilized with new tab")
-                    self.stats['stabilization_newtab_success'] += 1
-                    # Close the old problematic page
-                    try:
-                        await page.close()
-                    except:
-                        pass  # Ignore errors when closing old page
-                    return new_page
-            
-            # Strategy 3: Last resort - continue with current page
-            logger.warning("[WARNING] Could not fully stabilize page, continuing with current page")
-            self.stats['stabilization_failures'] += 1
-            return page
+                logger.warning("[WARNING] Page refresh failed, continuing with current page")
+                self.stats['stabilization_failures'] += 1
+                return page
             
         except Exception as e:
             logger.error(f"Error in page stabilization: {e}")
@@ -510,42 +472,16 @@ class JobScraper:
             logger.debug(f"Page refresh failed: {e}")
             return False
     
-    async def _create_fresh_page(self, job_url: str) -> Optional[Page]:
-        """Create a new page/tab and navigate to the job URL"""
+    async def simple_page_refresh_if_needed(self, page: Page) -> bool:
+        """Simple refresh if contact info missing - no tab creation"""
         try:
-            logger.debug("Creating fresh page/tab...")
-            
-            # Create new page in the same context
-            new_page = await self.context.new_page()
-            
-            # Navigate to the job URL
-            await new_page.goto(job_url, timeout=self.stabilization_timeout * 1000)
-            await new_page.wait_for_load_state('networkidle', timeout=int(self.stabilization_timeout * 0.5 * 1000))
-            
-            # Handle cookie consent on fresh page
-            await self.handle_cookie_consent(new_page)
-            
-            # Wait for page to fully load
-            await asyncio.sleep(2)
-            
-            # Verify the fresh page loaded correctly
-            try:
-                title_element = await new_page.query_selector(self.selectors['title'])
-                if title_element:
-                    logger.debug("Fresh page created successfully")
-                    return new_page
-                else:
-                    logger.debug("Fresh page missing expected content")
-                    await new_page.close()
-                    return None
-            except Exception as e:
-                logger.debug(f"Fresh page verification failed: {e}")
-                await new_page.close()
-                return None
-                
+            logger.info("🔄 Refreshing page to get missing contact info...")
+            await page.reload(timeout=30000, wait_until='networkidle')
+            await asyncio.sleep(2)  # Wait for page to stabilize
+            return True
         except Exception as e:
-            logger.debug(f"Fresh page creation failed: {e}")
-            return None
+            logger.warning(f"Page refresh failed: {e}")
+            return False
     
     async def extract_text_safe(self, page: Page, selector: str) -> Optional[str]:
         """Safely extract text from element"""
@@ -622,30 +558,46 @@ class JobScraper:
         contact_info = {'phone': None, 'email': None, 'contact_person': None}
         
         try:
+            logger.debug(f"Extracting contact info using selectors: phone='{self.selectors['contact_phone']}', email='{self.selectors['contact_email']}'")
+            
             # Extract phone (handle tel: links)
             phone_element = await page.query_selector(self.selectors['contact_phone'])
             if phone_element:
+                logger.debug("Phone element found")
                 phone_href = await phone_element.get_attribute('href')
+                phone_text = await phone_element.text_content()
+                logger.debug(f"Phone href: '{phone_href}', text: '{phone_text}'")
+                
                 if phone_href and phone_href.startswith('tel:'):
-                    phone = phone_href.replace('tel:', '').replace('&nbsp;', ' ')
-                    contact_info['phone'] = phone.strip()
+                    phone = phone_href.replace('tel:', '').replace('&nbsp;', ' ').strip()
+                    contact_info['phone'] = phone
+                    logger.debug(f"Extracted phone from href: '{phone}'")
                 else:
                     # Fallback to text content
-                    phone_text = await phone_element.text_content()
                     if phone_text:
                         contact_info['phone'] = phone_text.strip()
+                        logger.debug(f"Extracted phone from text: '{phone_text.strip()}'")
+            else:
+                logger.debug("Phone element not found")
             
             # Extract email (handle mailto: links)
             email_element = await page.query_selector(self.selectors['contact_email'])
             if email_element:
+                logger.debug("Email element found")
                 email_href = await email_element.get_attribute('href')
+                email_text = await email_element.text_content()
+                logger.debug(f"Email href: '{email_href}', text: '{email_text}'")
+                
                 if email_href and email_href.startswith('mailto:'):
                     contact_info['email'] = email_href.replace('mailto:', '')
+                    logger.debug(f"Extracted email from href: '{contact_info['email']}'")
                 else:
                     # Fallback to text content
-                    email_text = await email_element.text_content()
                     if email_text and '@' in email_text:
                         contact_info['email'] = email_text.strip()
+                        logger.debug(f"Extracted email from text: '{email_text.strip()}'")
+            else:
+                logger.debug("Email element not found")
             
             # Extract contact person from address block
             address_text = await self.extract_text_safe(page, self.selectors['contact_address'])
@@ -679,7 +631,7 @@ class JobScraper:
         try:
             logger.info(f"Scraping application link: {application_url}")
             
-            # Create new page for application link
+            # Create new page for application link (separate from main page)
             app_page = await self.context.new_page()
             await app_page.goto(application_url, timeout=30000)
             await app_page.wait_for_load_state('networkidle', timeout=10000)
@@ -783,7 +735,7 @@ class JobScraper:
                     scraped_data['external_error'] = external_job_data['external_scraping_error']
                 
                 self.scraped_count += 1
-                logger.info(f"✅ External job scraped: {scraped_data['profession']} @ {scraped_data['external_partner']}")
+                logger.info(f"[SUCCESS] External job scraped: {scraped_data['profession']} @ {scraped_data['external_partner']}")
                 return scraped_data
             
             # EXISTING: Continue with normal scraping if no external redirect
@@ -859,7 +811,28 @@ class JobScraper:
                 if contact_status:
                     logger.info(f"Contact info extracted: {', '.join(contact_status)}")
                 else:
-                    logger.warning("No contact information found (acceptable per assignment)")
+                    # Try page refresh to get missing contact info
+                    logger.info("💪 Trying page refresh to get missing contact info...")
+                    refresh_success = await self.simple_page_refresh_if_needed(page)
+                    if refresh_success:
+                        # Retry contact extraction after refresh
+                        direct_contact_retry = await self.extract_direct_contact_info(page)
+                        phone = direct_contact_retry['phone'] or phone
+                        email = direct_contact_retry['email'] or email
+                        contact_person = direct_contact_retry['contact_person'] or contact_person
+                        
+                        # Update contact status after retry
+                        contact_status = []
+                        if phone: contact_status.append("phone")
+                        if email: contact_status.append("email")
+                        if contact_person: contact_status.append("contact_person")
+                        
+                        if contact_status:
+                            logger.info(f"✅ Contact info found after refresh: {', '.join(contact_status)}")
+                        else:
+                            logger.warning("No contact information found even after refresh (acceptable per assignment)")
+                    else:
+                        logger.warning("No contact information found (acceptable per assignment)")
             
             # Extract salary from job description if available
             salary = None
@@ -965,7 +938,7 @@ class JobScraper:
                     use_session_dir=self.use_sessions
                 )
                 
-                logger.info(f"✅ Progress saved using FileManager: {len(validated_jobs)} jobs")
+                logger.info(f"[SUCCESS] Progress saved using FileManager: {len(validated_jobs)} jobs")
                 logger.info(f"Files: {json_path.name}, {csv_path.name}")
                 
             else:
@@ -998,7 +971,7 @@ class JobScraper:
                 logger.info(f"📁 Progress saved (legacy): {len(validated_jobs)} jobs in batch {batch_number}")
             
         except Exception as e:
-            logger.error(f"❌ Error saving progress: {e}")
+            logger.error(f"[ERROR] Error saving progress: {e}")
             self.stats['errors'] += 1
     
     async def load_existing_progress(self) -> List[Dict]:
@@ -1172,10 +1145,8 @@ class JobScraper:
             'page_stabilization': {
                 'attempts': self.stats['stabilization_attempts'],
                 'refresh_success': self.stats['stabilization_refresh_success'],
-                'newtab_success': self.stats['stabilization_newtab_success'],
                 'failures': self.stats['stabilization_failures'],
                 'enabled': self.enable_page_stabilization,
-                'prefer_new_tab': self.prefer_new_tab,
                 'timeout_seconds': self.stabilization_timeout
             },
             'file_management': file_stats,
@@ -1221,12 +1192,12 @@ class JobScraper:
         # Performance metrics
         perf = stats['scraping_performance']
         logger.info(f"📊 Total Jobs: {len(all_jobs)}")
-        logger.info(f"✅ Successful: {perf['successful_scrapes']} ({perf['success_rate_percent']}%)")
-        logger.info(f"❌ Errors: {perf['errors']}")
+        logger.info(f"[SUCCESS] Successful: {perf['successful_scrapes']} ({perf['success_rate_percent']}%)")
+        logger.info(f"[ERROR] Errors: {perf['errors']}")
         logger.info(f"🚀 Speed: {perf['jobs_per_minute']} jobs/minute")
         
         if perf['validation_failures'] > 0:
-            logger.info(f"⚠️  Validation failures: {perf['validation_failures']}")
+            logger.info(f"[WARNING]  Validation failures: {perf['validation_failures']}")
         
         # CAPTCHA performance
         captcha = stats['captcha_performance']
@@ -1236,15 +1207,10 @@ class JobScraper:
         # Page stabilization performance
         stabilization = stats['page_stabilization']
         if stabilization['attempts'] > 0:
-            total_success = stabilization['refresh_success'] + stabilization['newtab_success']
-            success_rate = (total_success / stabilization['attempts'] * 100) if stabilization['attempts'] > 0 else 0
-            logger.info(f"[STABILIZE] Page fixes: {total_success}/{stabilization['attempts']} successful ({success_rate:.1f}%)")
-            if stabilization['refresh_success'] > 0:
-                logger.info(f"  - Refresh fixes: {stabilization['refresh_success']}")
-            if stabilization['newtab_success'] > 0:
-                logger.info(f"  - New tab fixes: {stabilization['newtab_success']}")
+            success_rate = (stabilization['refresh_success'] / stabilization['attempts'] * 100) if stabilization['attempts'] > 0 else 0
+            logger.info(f"[STABILIZE] Page refreshes: {stabilization['refresh_success']}/{stabilization['attempts']} successful ({success_rate:.1f}%)")
             if stabilization['failures'] > 0:
-                logger.info(f"  - Failed fixes: {stabilization['failures']}")
+                logger.info(f"  - Failed refreshes: {stabilization['failures']}")
         
         # File management
         if FILE_MANAGER_AVAILABLE and self.file_manager:
@@ -1275,9 +1241,9 @@ class JobScraper:
                 if auto_solve_captcha and not self.captcha_solver and CAPTCHA_SOLVER_AVAILABLE:
                     try:
                         self.captcha_solver = CaptchaSolver()
-                        logger.info("✅ CAPTCHA auto-solver initialized")
+                        logger.info("[SUCCESS] CAPTCHA auto-solver initialized")
                     except Exception as e:
-                        logger.warning(f"❌ Failed to initialize CAPTCHA solver: {e}")
+                        logger.warning(f"[ERROR] Failed to initialize CAPTCHA solver: {e}")
                         self.auto_solve_captcha = False
             
             # Setup
