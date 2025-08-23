@@ -57,7 +57,7 @@ except ImportError:
         from config.settings import TWOCAPTCHA_API_KEY, CAPTCHA_SETTINGS
     except ImportError as e:
         raise ImportError(
-            f"❌ Settings import failed: {e}\n"
+            f"[ERROR] Settings import failed: {e}\n"
             "Please ensure src/config/settings.py exists and contains required settings."
         )
 
@@ -314,10 +314,10 @@ class CaptchaSolver:
             self.model.to(self.device)
             self.model.eval()  # Set to evaluation mode
             
-            logger.info(f"✅ Model {self.model_name} loaded successfully on {self.device}")
+            logger.info(f"[SUCCESS] Model {self.model_name} loaded successfully on {self.device}")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load model {self.model_name}: {e}")
+            logger.error(f"[ERROR] Failed to load model {self.model_name}: {e}")
             logger.info("💡 Fallback: Install requirements with 'pip install transformers torch torchvision'")
             raise e
     
@@ -480,11 +480,11 @@ class CaptchaSolver:
             # Screenshot the CAPTCHA element
             screenshot_bytes = await captcha_element.screenshot()
             
-            logger.info("✅ CAPTCHA image captured successfully")
+            logger.info("[SUCCESS] CAPTCHA image captured successfully")
             return screenshot_bytes
             
         except Exception as e:
-            logger.error(f"❌ Error capturing CAPTCHA image: {e}")
+            logger.error(f"[ERROR] Error capturing CAPTCHA image: {e}")
             return None
     
     async def solve_captcha_from_page(self, page: Page, captcha_selector: str, input_selector: str, submit_selector: str) -> bool:

@@ -37,7 +37,7 @@ try:
     SETTINGS_AVAILABLE = True
 except ImportError as e:
     raise ImportError(
-        f"❌ Critical settings import failed: {e}\n"
+        f"[ERROR] Critical settings import failed: {e}\n"
         "Please ensure src/config/settings.py exists and is properly configured.\n"
         "Required settings: SCRAPER_SETTINGS, DATABASE_SETTINGS, FILE_MANAGEMENT_SETTINGS, "
         "VALIDATION_SETTINGS, LOGGING_SETTINGS, PATHS"
@@ -115,7 +115,7 @@ class FullPipeline:
             try:
                 self.file_manager = FileManager()
                 self.session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-                logger.info(f"✅ FileManager initialized with session: {self.session_id}")
+                logger.info(f"[SUCCESS] FileManager initialized with session: {self.session_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize FileManager: {e}")
                 self.enable_sessions = False
@@ -123,7 +123,7 @@ class FullPipeline:
         if self.enable_database and DATA_LOADER_AVAILABLE:
             try:
                 self.data_loader = JobDataLoader()
-                logger.info("✅ JobDataLoader initialized")
+                logger.info("[SUCCESS] JobDataLoader initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize JobDataLoader: {e}")
                 self.enable_database = False
@@ -203,7 +203,7 @@ class FullPipeline:
                     logger.warning("Database connection failed, continuing without database")
                     self.enable_database = False
                 else:
-                    logger.info("✅ Database connection established")
+                    logger.info("[SUCCESS] Database connection established")
             
             # Check if job URLs exist
             job_urls_path = self.input_dir / "job_urls.csv"
@@ -255,7 +255,7 @@ class FullPipeline:
                     
                     inserted_count = await self.data_loader.load_jobs_batch(jobs_data)
                     self.pipeline_stats['database_insertions'] = inserted_count
-                    logger.info(f"✅ Inserted {inserted_count} jobs into database")
+                    logger.info(f"[SUCCESS] Inserted {inserted_count} jobs into database")
                 else:
                     logger.warning("No scraped jobs file found for database loading")
             
@@ -351,7 +351,7 @@ class FullPipeline:
         logger.info("=" * 80)
         logger.info("🎯 ENHANCED FULL PIPELINE COMPLETED!")
         logger.info("=" * 80)
-        logger.info(f"⏱️  Total execution time: {total_time:.2f} seconds")
+        logger.info(f"[TIME]  Total execution time: {total_time:.2f} seconds")
         logger.info(f"📅 Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Enhanced statistics summary
@@ -360,19 +360,19 @@ class FullPipeline:
         logger.info(f"   🔍 Jobs scraped: {self.pipeline_stats['total_jobs_scraped']}")
         logger.info(f"   📞 Contacts enhanced: {self.pipeline_stats['total_contacts_enhanced']}")
         logger.info(f"   💾 Database insertions: {self.pipeline_stats['database_insertions']}")
-        logger.info(f"   ⚠️  Validation errors: {self.pipeline_stats['validation_errors']}")
+        logger.info(f"   [WARNING]  Validation errors: {self.pipeline_stats['validation_errors']}")
         logger.info(f"   🔒 CAPTCHA encounters: {self.pipeline_stats['captcha_encounters']}")
         
         # Phase timing breakdown
-        logger.info("\n⏱️  PHASE TIMING BREAKDOWN:")
+        logger.info("\n[TIME]  PHASE TIMING BREAKDOWN:")
         for phase, start_time in self.phase_times.items():
             logger.info(f"   {phase}")
         
         # Enhanced features status
         logger.info("\n🚀 ENHANCED FEATURES STATUS:")
-        logger.info(f"   💾 Database integration: {'✅ Enabled' if self.enable_database else '❌ Disabled'}")
-        logger.info(f"   📁 Session management: {'✅ Enabled' if self.enable_sessions else '❌ Disabled'}")
-        logger.info(f"   ✅ Data validation: {'✅ Enabled' if self.enable_validation else '❌ Disabled'}")
+        logger.info(f"   💾 Database integration: {'[SUCCESS] Enabled' if self.enable_database else '[ERROR] Disabled'}")
+        logger.info(f"   📁 Session management: {'[SUCCESS] Enabled' if self.enable_sessions else '[ERROR] Disabled'}")
+        logger.info(f"   [SUCCESS] Data validation: {'[SUCCESS] Enabled' if self.enable_validation else '[ERROR] Disabled'}")
         if self.session_id:
             logger.info(f"   🔑 Session ID: {self.session_id}")
         
@@ -404,12 +404,12 @@ class FullPipeline:
                 logger.debug(f"Could not get database health: {e}")
         
         # Assignment requirements check
-        logger.info("\n✅ ASSIGNMENT REQUIREMENTS CHECK:")
-        logger.info("   ✅ Main Task: Job data scraping with enhanced features")
-        logger.info("   ✅ Bonus Task 1: Transform & Load (CSV/JSON + Database)")
-        logger.info("   ✅ Bonus Task 2: Handle Missing Emails & Websites")
-        logger.info("   ✅ Bonus Task 3: Solve CAPTCHA (TrOCR automation)")
-        logger.info("   ✅ Additional: Session management, data validation, statistics")
+        logger.info("\n[SUCCESS] ASSIGNMENT REQUIREMENTS CHECK:")
+        logger.info("   [SUCCESS] Main Task: Job data scraping with enhanced features")
+        logger.info("   [SUCCESS] Bonus Task 1: Transform & Load (CSV/JSON + Database)")
+        logger.info("   [SUCCESS] Bonus Task 2: Handle Missing Emails & Websites")
+        logger.info("   [SUCCESS] Bonus Task 3: Solve CAPTCHA (TrOCR automation)")
+        logger.info("   [SUCCESS] Additional: Session management, data validation, statistics")
         
         logger.info("=" * 80)
     
@@ -467,7 +467,7 @@ async def main():
         logger.info("🎉 Enhanced full pipeline completed successfully!")
         return 0
     else:
-        logger.error("❌ Pipeline failed")
+        logger.error("[ERROR] Pipeline failed")
         return 1
 
 if __name__ == "__main__":

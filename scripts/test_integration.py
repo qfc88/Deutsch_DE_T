@@ -45,7 +45,7 @@ class IntegrationTest:
             'timestamp': datetime.now().isoformat()
         }
         
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "[SUCCESS] PASS" if success else "[ERROR] FAIL"
         logger.info(f"{status} {test_name}")
         if details:
             logger.info(f"   Details: {details}")
@@ -378,14 +378,14 @@ class IntegrationTest:
         logger.info("🧪 INTEGRATION TEST REPORT")
         logger.info("=" * 80)
         logger.info(f"📊 Total Tests: {total_tests}")
-        logger.info(f"✅ Passed: {passed_tests}")
-        logger.info(f"❌ Failed: {failed_tests}")
+        logger.info(f"[SUCCESS] Passed: {passed_tests}")
+        logger.info(f"[ERROR] Failed: {failed_tests}")
         logger.info(f"📈 Success Rate: {(passed_tests/total_tests)*100:.1f}%")
-        logger.info(f"⏱️  Duration: {elapsed_time:.2f} seconds")
+        logger.info(f"[TIME]  Duration: {elapsed_time:.2f} seconds")
         
         logger.info("\n📋 DETAILED RESULTS:")
         for test_name, result in self.test_results.items():
-            status = "✅ PASS" if result['success'] else "❌ FAIL"
+            status = "[SUCCESS] PASS" if result['success'] else "[ERROR] FAIL"
             logger.info(f"   {status} {test_name}")
             if result['details']:
                 logger.info(f"      {result['details']}")
@@ -393,7 +393,7 @@ class IntegrationTest:
         if failed_tests == 0:
             logger.info("\n🎉 ALL TESTS PASSED! Integration is working correctly.")
         else:
-            logger.info(f"\n⚠️  {failed_tests} TEST(S) FAILED. Check components before deployment.")
+            logger.info(f"\n[WARNING]  {failed_tests} TEST(S) FAILED. Check components before deployment.")
         
         logger.info("=" * 80)
         
@@ -454,10 +454,10 @@ async def main():
     success = await test_runner.run_all_tests()
     
     if success:
-        logger.info("✅ All integration tests passed!")
+        logger.info("[SUCCESS] All integration tests passed!")
         return 0
     else:
-        logger.error("❌ Some integration tests failed!")
+        logger.error("[ERROR] Some integration tests failed!")
         return 1
 
 if __name__ == "__main__":

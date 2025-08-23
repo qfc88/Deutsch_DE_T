@@ -37,7 +37,7 @@ async def debug_browser_issues():
             slow_mo=1000 if not SCRAPER_SETTINGS['headless'] else 0  # Slow down for debugging
         )
         
-        print(f"✅ Browser launched successfully")
+        print(f"[SUCCESS] Browser launched successfully")
         
         try:
             for i, url in enumerate(test_urls):
@@ -46,16 +46,16 @@ async def debug_browser_issues():
                 try:
                     # Create new page
                     page = await browser.new_page()
-                    print(f"✅ Page created")
+                    print(f"[SUCCESS] Page created")
                     
                     # Set viewport  
                     await page.set_viewport_size(BROWSER_SETTINGS['viewport'])
-                    print(f"✅ Viewport set")
+                    print(f"[SUCCESS] Viewport set")
                     
                     # Try to navigate
                     print(f"🌐 Navigating to: {url}")
                     response = await page.goto(url, wait_until="load", timeout=30000)
-                    print(f"✅ Navigation response: {response.status}")
+                    print(f"[SUCCESS] Navigation response: {response.status}")
                     
                     # Wait a bit to see what happens
                     await asyncio.sleep(3)
@@ -63,9 +63,9 @@ async def debug_browser_issues():
                     # Check if page is still open
                     try:
                         title = await page.title()
-                        print(f"✅ Page title: {title[:50]}...")
+                        print(f"[SUCCESS] Page title: {title[:50]}...")
                     except Exception as title_error:
-                        print(f"❌ Could not get page title: {title_error}")
+                        print(f"[ERROR] Could not get page title: {title_error}")
                     
                     # Check for modals or CAPTCHAs
                     try:
@@ -73,16 +73,16 @@ async def debug_browser_issues():
                         if captcha > 0:
                             print(f"🔒 CAPTCHA detected: {captcha} elements")
                         else:
-                            print("✅ No CAPTCHA detected")
+                            print("[SUCCESS] No CAPTCHA detected")
                     except Exception as captcha_error:
-                        print(f"❌ Error checking CAPTCHA: {captcha_error}")
+                        print(f"[ERROR] Error checking CAPTCHA: {captcha_error}")
                         
                     # Close page properly
                     await page.close()
-                    print(f"✅ Page closed properly")
+                    print(f"[SUCCESS] Page closed properly")
                     
                 except Exception as page_error:
-                    print(f"❌ Page error: {page_error}")
+                    print(f"[ERROR] Page error: {page_error}")
                     try:
                         await page.close()
                     except:
@@ -90,14 +90,14 @@ async def debug_browser_issues():
                 
                 # Wait between tests
                 if i < len(test_urls) - 1:
-                    print("⏳ Waiting 5 seconds before next test...")
+                    print("[WAIT] Waiting 5 seconds before next test...")
                     await asyncio.sleep(5)
                     
         finally:
             await browser.close()
-            print(f"✅ Browser closed")
+            print(f"[SUCCESS] Browser closed")
 
 if __name__ == "__main__":
-    print("🚀 Browser Debug Tool")
+    print("[START] Browser Debug Tool")
     print("=" * 50)
     asyncio.run(debug_browser_issues())

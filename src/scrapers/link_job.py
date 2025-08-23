@@ -13,7 +13,7 @@ try:
     from settings import PATHS, SCRAPER_SETTINGS
 except ImportError as e:
     raise ImportError(
-        f"❌ Settings import failed: {e}\n"
+        f"[ERROR] Settings import failed: {e}\n"
         "Please ensure src/config/settings.py exists and contains required settings."
     )
 

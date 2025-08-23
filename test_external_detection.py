@@ -56,14 +56,14 @@ async def test_azubi_detection():
         
         print("=== EXTERNAL REDIRECT DETECTION TEST ===")
         if result:
-            print("✅ External redirect detected successfully!")
+            print("[SUCCESS] External redirect detected successfully!")
             print(f"Partner: {result.get('partner_company')}")
             print(f"Domain: {result.get('partner_domain')}")
             print(f"URL: {result.get('external_url')}")
             print(f"UTM Campaign: {result.get('utm_campaign')}")
             print(f"UTM Source: {result.get('utm_source')}")
         else:
-            print("❌ No external redirect detected")
+            print("[ERROR] No external redirect detected")
         
         await browser.close()
         return result
@@ -85,16 +85,16 @@ async def test_azubi_scraping():
             result = await handler.scrape_external_job(test_url)
             
             if result:
-                print("✅ External scraping completed!")
+                print("[SUCCESS] External scraping completed!")
                 print(f"Fields extracted: {len([k for k, v in result.items() if v])}")
                 for key, value in result.items():
                     if value and key != 'external_source_url':
                         print(f"  {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}")
             else:
-                print("❌ No data extracted")
+                print("[ERROR] No data extracted")
                 
         except Exception as e:
-            print(f"⚠️ Scraping error (expected if site blocks bots): {e}")
+            print(f"[WARNING] Scraping error (expected if site blocks bots): {e}")
         
         await browser.close()
 

@@ -31,7 +31,7 @@ except ImportError:
         from config.settings import DATABASE_SETTINGS, VALIDATION_SETTINGS, DATA_CLEANING_SETTINGS
     except ImportError as e:
         raise ImportError(
-            f"❌ Settings import failed: {e}\n"
+            f"[ERROR] Settings import failed: {e}\n"
             "Please ensure src/config/settings.py exists and contains: "
             "DATABASE_SETTINGS, VALIDATION_SETTINGS, DATA_CLEANING_SETTINGS"
         )
@@ -132,14 +132,35 @@ class JobDataLoader:
         if not email:
             return None
         
-        email = email.strip().lower()
+        email = email.strip()
+        
+        # Filter out URL parameters, links, and malformed entries
+        if (email.startswith('?body=') or 
+            email.startswith('http') or 
+            email.startswith('mailto:') or
+            'azubi.de' in email or
+            len(email) > 100):  # Reasonable email length limit
+            logger.warning(f"Filtered out invalid email format: {email[:50]}...")
+            return None
+        
+        email = email.lower()
         
         if not self.validate_emails:
             return email
         
-        # Basic email validation
+        # Enhanced email validation
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if re.match(email_pattern, email):
+            # Additional checks for common issues
+            if email.count('@') != 1:
+                logger.warning(f"Invalid email format (multiple @): {email}")
+                return None
+            if email.startswith('.') or email.endswith('.'):
+                logger.warning(f"Invalid email format (starts/ends with dot): {email}")
+                return None
+            if '..' in email:
+                logger.warning(f"Invalid email format (double dots): {email}")
+                return None
             return email
         
         logger.warning(f"Invalid email format: {email}")

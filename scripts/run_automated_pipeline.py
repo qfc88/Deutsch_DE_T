@@ -23,7 +23,7 @@ sys.path.append(str(project_root / "src" / "database"))
 try:
     from settings import *
 except ImportError as e:
-    print(f"❌ Settings import failed: {e}")
+    print(f"[ERROR] Settings import failed: {e}")
     sys.exit(1)
 
 # Enhanced logging for Docker
@@ -67,7 +67,7 @@ class AutomatedPipeline:
                 db = DatabaseManager()
                 await db.connect()
                 await db.disconnect()
-                logger.info("✅ Database connection successful")
+                logger.info("[SUCCESS] Database connection successful")
                 return True
                 
             except Exception as e:
@@ -75,7 +75,7 @@ class AutomatedPipeline:
                     logger.info(f"Database not ready (attempt {attempt + 1}/{max_attempts}), retrying in 5s...")
                     await asyncio.sleep(5)
                 else:
-                    logger.error(f"❌ Database connection failed after {max_attempts} attempts: {e}")
+                    logger.error(f"[ERROR] Database connection failed after {max_attempts} attempts: {e}")
                     return False
         
         return False
@@ -100,18 +100,18 @@ class AutomatedPipeline:
             else:
                 logger.info("🆕 No existing data found")
                 # For now, skip scraping to avoid Playwright issues
-                logger.warning("⚠️ Skipping scraping due to Playwright async conversion in progress")
+                logger.warning("[WARNING] Skipping scraping due to Playwright async conversion in progress")
                 return 0
             
             if df is not None and len(df) > 0:
-                logger.info(f"✅ Phase 1 completed: {len(df)} job URLs collected")
+                logger.info(f"[SUCCESS] Phase 1 completed: {len(df)} job URLs collected")
                 return len(df)
             else:
-                logger.error("❌ Phase 1 failed: No URLs collected")
+                logger.error("[ERROR] Phase 1 failed: No URLs collected")
                 return 0
                 
         except Exception as e:
-            logger.error(f"❌ Phase 1 error: {e}")
+            logger.error(f"[ERROR] Phase 1 error: {e}")
             self.stats['errors'] += 1
             return 0
     
@@ -125,7 +125,7 @@ class AutomatedPipeline:
             # Check if input file exists
             input_path = Path(PATHS['input_csv'])
             if not input_path.exists():
-                logger.error("❌ Input file not found, Phase 1 must complete first")
+                logger.error("[ERROR] Input file not found, Phase 1 must complete first")
                 return 0
             
             # Initialize with automation settings
@@ -147,11 +147,11 @@ class AutomatedPipeline:
             )
             
             total_scraped = scraper.scraped_count
-            logger.info(f"✅ Phase 2 completed: {total_scraped} jobs scraped, {scraper.failed_count} failed")
+            logger.info(f"[SUCCESS] Phase 2 completed: {total_scraped} jobs scraped, {scraper.failed_count} failed")
             return total_scraped
             
         except Exception as e:
-            logger.error(f"❌ Phase 2 error: {e}")
+            logger.error(f"[ERROR] Phase 2 error: {e}")
             self.stats['errors'] += 1
             return 0
     
@@ -166,7 +166,7 @@ class AutomatedPipeline:
             
             missing_jobs = await load_missing_jobs()
             if not missing_jobs:
-                logger.info("✅ Phase 3 skipped: No missing contacts to enhance")
+                logger.info("[SUCCESS] Phase 3 skipped: No missing contacts to enhance")
                 return 0
             
             # Limit processing in automation mode to prevent long runs
@@ -178,14 +178,14 @@ class AutomatedPipeline:
             if enhanced_jobs:
                 report = await save_enhanced_results(enhanced_jobs, missing_jobs)
                 contacts_found = report['processing_summary']['emails_found'] + report['processing_summary']['phones_found']
-                logger.info(f"✅ Phase 3 completed: {contacts_found} additional contacts found")
+                logger.info(f"[SUCCESS] Phase 3 completed: {contacts_found} additional contacts found")
                 return contacts_found
             else:
-                logger.warning("⚠️ Phase 3 completed with no enhancements")
+                logger.warning("[WARNING] Phase 3 completed with no enhancements")
                 return 0
                 
         except Exception as e:
-            logger.error(f"❌ Phase 3 error: {e}")
+            logger.error(f"[ERROR] Phase 3 error: {e}")
             self.stats['errors'] += 1
             return 0
     
@@ -202,14 +202,14 @@ class AutomatedPipeline:
             csv_path = Path(PATHS['output_dir']) / "scraped_jobs.csv"
             if csv_path.exists():
                 result = await loader.load_jobs_from_csv(str(csv_path))
-                logger.info(f"✅ Database loading completed: {result.get('loaded', 0)} jobs loaded")
+                logger.info(f"[SUCCESS] Database loading completed: {result.get('loaded', 0)} jobs loaded")
                 return result.get('loaded', 0)
             else:
-                logger.warning("⚠️ No CSV file found for database loading")
+                logger.warning("[WARNING] No CSV file found for database loading")
                 return 0
                 
         except Exception as e:
-            logger.error(f"❌ Database loading error: {e}")
+            logger.error(f"[ERROR] Database loading error: {e}")
             self.stats['errors'] += 1
             return 0
     
@@ -220,7 +220,7 @@ class AutomatedPipeline:
         
         # Wait for database
         if not await self.wait_for_database():
-            logger.error("❌ Pipeline aborted: Database not available")
+            logger.error("[ERROR] Pipeline aborted: Database not available")
             return False
         
         pipeline_start = time.time()
@@ -259,15 +259,15 @@ class AutomatedPipeline:
             
             logger.info("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
             logger.info(f"📊 Summary:")
-            logger.info(f"   ⏱️  Duration: {pipeline_duration:.1f} seconds")
-            logger.info(f"   ✅ Phases completed: {self.stats['phases_completed']}/4")
+            logger.info(f"   [TIME]  Duration: {pipeline_duration:.1f} seconds")
+            logger.info(f"   [SUCCESS] Phases completed: {self.stats['phases_completed']}/4")
             logger.info(f"   📋 Jobs processed: {self.stats['total_jobs_processed']}")
-            logger.info(f"   ❌ Errors: {self.stats['errors']}")
+            logger.info(f"   [ERROR] Errors: {self.stats['errors']}")
             
             return self.stats['errors'] == 0
             
         except Exception as e:
-            logger.error(f"❌ Pipeline failed: {e}")
+            logger.error(f"[ERROR] Pipeline failed: {e}")
             return False
     
     async def run_continuous_mode(self):
@@ -284,9 +284,9 @@ class AutomatedPipeline:
                 success = await self.run_full_pipeline()
                 
                 if success:
-                    logger.info(f"✅ Scheduled run completed successfully")
+                    logger.info(f"[SUCCESS] Scheduled run completed successfully")
                 else:
-                    logger.warning(f"⚠️ Scheduled run completed with errors")
+                    logger.warning(f"[WARNING] Scheduled run completed with errors")
                 
                 if self.running:
                     logger.info(f"😴 Sleeping for {interval_hours} hours until next run...")
@@ -296,7 +296,7 @@ class AutomatedPipeline:
                 logger.info("🛑 Continuous mode cancelled")
                 break
             except Exception as e:
-                logger.error(f"❌ Error in continuous mode: {e}")
+                logger.error(f"[ERROR] Error in continuous mode: {e}")
                 if self.running:
                     logger.info("🔄 Retrying in 30 minutes...")
                     await asyncio.sleep(1800)  # Wait 30 minutes before retry
@@ -323,5 +323,5 @@ if __name__ == "__main__":
         logger.info("🛑 Pipeline interrupted by user")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
+        logger.error(f"[ERROR] Fatal error: {e}")
         sys.exit(1)

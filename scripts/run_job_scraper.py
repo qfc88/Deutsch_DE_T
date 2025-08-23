@@ -19,7 +19,7 @@ try:
     from settings import PATHS
 except ImportError as e:
     raise ImportError(
-        f"❌ Settings import failed: {e}\n"
+        f"[ERROR] Settings import failed: {e}\n"
         "Please ensure src/config/settings.py exists and contains required settings."
     )
 
@@ -66,7 +66,7 @@ async def main():
         # Check for input file
         input_path = Path(PATHS['input_csv'])
         if not input_path.exists():
-            logger.error("❌ job_urls.csv not found!")
+            logger.error("[ERROR] job_urls.csv not found!")
             logger.error("📋 Please run Phase 1 (run_link_scraper.py) first")
             return False
         
@@ -101,7 +101,7 @@ async def main():
         
         # Output files
         output_dir = Path(PATHS['output_dir'])
-        logger.info("✅ Output files generated:")
+        logger.info("[SUCCESS] Output files generated:")
         
         output_files = [
             "scraped_jobs.csv",

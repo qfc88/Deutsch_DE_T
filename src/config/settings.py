@@ -21,11 +21,11 @@ TWOCAPTCHA_API_KEY = "5865b4e02e5bc91f671a60bc18fd75d1"
 SCRAPER_SETTINGS = {
     'headless': False,             # Set to False for local debugging, True for Docker/production
     'timeout': 30000,               # Page load timeout in milliseconds
-    'delay_between_jobs': 1,        # Delay between job scraping in seconds
-    'batch_size': 2,                # Number of jobs to process before saving progress (reduced for debugging)
+    'delay_between_jobs': 0.3,      # Delay between job scraping in seconds (optimized for speed)
+    'batch_size': 50,               # Number of jobs to process before saving progress (optimized for speed)
     'max_retries': 1,               # Max retries for failed jobs (reduced for debugging)
-    'save_every_n_jobs': 2,         # Save progress every N jobs (reduced for debugging)
-    'max_jobs_per_session': 10,     # Maximum jobs to scrape in one session (reduced for debugging)
+    'save_every_n_jobs': 50,        # Save progress every N jobs (optimized for speed)
+    'max_jobs_per_session': 1000,   # Maximum jobs to scrape in one session (optimized for speed)
     'enable_resume': True,          # Enable resume functionality
     'use_sessions': True,           # Use session-based file management
 }
@@ -51,14 +51,14 @@ BROWSER_SETTINGS = {
 # =============================================================================
 
 CAPTCHA_SETTINGS = {
-    'trocr_attempts': 3,            # TrOCR attempts before fallback
-    'twocaptcha_attempts': 3,       # 2Captcha attempts before fallback
+    'trocr_attempts': 1,            # TrOCR attempts before fallback
+    'twocaptcha_attempts': 10,       # 2Captcha attempts before fallback
     'manual_timeout': 300,          # Manual solving timeout in seconds (5 min)
     'confidence_threshold': 0.7,    # TrOCR confidence threshold
     'solving_strategies': ['trocr', '2captcha', 'manual'],  # Priority order
     'trocr_model': 'anuashok/ocr-captcha-v3',
     'reload_captcha_between_attempts': True,
-    'max_total_attempts': 10,       # Maximum total attempts across all strategies
+    'max_total_attempts': 15,       # Maximum total attempts across all strategies
 }
 
 # =============================================================================
@@ -148,7 +148,7 @@ DATA_CLEANING_SETTINGS = {
 
 CONTACT_SCRAPER_SETTINGS = {
     'max_contact_pages': 10,
-    'contact_page_timeout': 10000,
+    'contact_page_timeout': 5000,            # Skip contact pages that load >5 seconds (optimized for speed)
     'delay_between_pages': 2,
     'max_search_depth': 3,                   # Maximum levels to search for contacts
     'preferred_email_domains': [              # Prioritize certain email domains
@@ -227,7 +227,7 @@ TESTING_SETTINGS = {
 
 # Production environment settings
 if os.getenv('ENVIRONMENT') == 'production':
-    SCRAPER_SETTINGS['headless'] = True
+    SCRAPER_SETTINGS['headless'] = False
     SCRAPER_SETTINGS['batch_size'] = 50
     LOGGING_SETTINGS['level'] = 'WARNING'
     DATABASE_SETTINGS['min_connections'] = 10

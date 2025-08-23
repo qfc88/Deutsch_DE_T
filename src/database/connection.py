@@ -25,7 +25,7 @@ except ImportError:
     except ImportError:
         # No fallback - require proper settings.py
         raise ImportError(
-            "❌ DATABASE_SETTINGS not found! "
+            "[ERROR] DATABASE_SETTINGS not found! "
             "Please ensure src/config/settings.py exists and is properly configured. "
             "Run: python scripts/setup_database.py to initialize."
         )
