@@ -45,10 +45,10 @@ services:
       # Browser configuration for Docker
       DISPLAY: :99
       
-      # Scraper settings - DEBUG MODE
+      # Scraper settings - 4 CORE/8GB SERVER OPTIMIZED
       SCRAPER_HEADLESS: "true"
-      SCRAPER_BATCH_SIZE: 5               # DEBUG: Small batches
-      MAX_JOBS_PER_SESSION: 10            # DEBUG: Limited jobs for testing
+      SCRAPER_BATCH_SIZE: 25              # Optimized for 4 cores
+      MAX_JOBS_PER_SESSION: 1000          # Higher limit for 8GB RAM
       
       # Enable V2 automation mode with enhanced features
       AUTOMATION_MODE: "true"
@@ -75,11 +75,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '1.0'
+          memory: 6G
+          cpus: '3.0'
         reservations:
-          memory: 1G
-          cpus: '0.5'
+          memory: 3G
+          cpus: '1.5'
 
   # Optional: Adminer for database management
   adminer:
