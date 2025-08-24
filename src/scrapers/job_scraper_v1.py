@@ -14,6 +14,7 @@ import re
 from datetime import datetime
 import time
 import sys
+import importlib.util
 
 # Add config and utils to path
 sys.path.append(str(Path(__file__).parent.parent / "config"))
@@ -44,15 +45,28 @@ except ImportError:
 
 # Import FileManager
 try:
+    # Try absolute import first
+    sys.path.append(str(Path(__file__).parent.parent / "utils"))
     from file_manager import FileManager
     FILE_MANAGER_AVAILABLE = True
 except ImportError:
     try:
+        # Try relative import
         from utils.file_manager import FileManager
         FILE_MANAGER_AVAILABLE = True
     except ImportError:
-        FILE_MANAGER_AVAILABLE = False
-        logging.warning("FileManager not available, using legacy file handling")
+        try:
+            # Try direct path import
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("file_manager", 
+                  str(Path(__file__).parent.parent / "utils" / "file_manager.py"))
+            file_manager_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(file_manager_module)
+            FileManager = file_manager_module.FileManager
+            FILE_MANAGER_AVAILABLE = True
+        except ImportError:
+            FILE_MANAGER_AVAILABLE = False
+            logging.warning("FileManager not available, using legacy file handling")
 
 # Import JobModel for validation
 try:
