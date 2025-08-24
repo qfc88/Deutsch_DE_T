@@ -227,11 +227,31 @@ class JobScraper:
         }
     
     async def load_job_urls(self, csv_path: str) -> List[Dict]:
-        """Load job URLs from CSV file"""
+        """Load job URLs from CSV file with optional range filtering"""
         try:
             df = pd.read_csv(csv_path)
-            logger.info(f"Loaded {len(df)} job URLs from {csv_path}")
-            return df.to_dict('records')
+            total_jobs = len(df)
+            logger.info(f"Loaded {total_jobs} job URLs from {csv_path}")
+            
+            # Apply range filtering for parallel processing
+            start_percent = int(os.getenv('JOB_START_PERCENT', 0))
+            end_percent = int(os.getenv('JOB_END_PERCENT', 100))
+            container_id = os.getenv('CONTAINER_ID', 'single')
+            
+            if start_percent > 0 or end_percent < 100:
+                start_idx = int(total_jobs * start_percent / 100)
+                end_idx = int(total_jobs * end_percent / 100)
+                
+                df_filtered = df.iloc[start_idx:end_idx]
+                filtered_jobs = len(df_filtered)
+                
+                logger.info(f"[PARALLEL] Container {container_id}: Processing jobs {start_idx}-{end_idx} ({start_percent}%-{end_percent}%)")
+                logger.info(f"[PARALLEL] Container {container_id}: {filtered_jobs} jobs assigned from {total_jobs} total")
+                
+                return df_filtered.to_dict('records')
+            else:
+                return df.to_dict('records')
+                
         except Exception as e:
             logger.error(f"Error loading job URLs: {e}")
             return []

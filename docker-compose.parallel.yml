@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  # Container 1: First half of jobs (0-4537)
+  job-scraper-1:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-scraper-1
+    environment:
+      # Database configuration - connect to main database server
+      DB_HOST: 139.162.3.114          # Database server IP
+      DB_PORT: 5432
+      DB_NAME: job_market_data
+      DB_USER: jobscraper
+      DB_PASSWORD: working
+      
+      # Application configuration
+      ENVIRONMENT: production
+      PYTHONPATH: /app/src
+      
+      # Browser configuration for Docker
+      DISPLAY: :99
+      
+      # Scraper settings - OPTIMIZED FOR PARALLEL PROCESSING
+      SCRAPER_HEADLESS: "true"
+      SCRAPER_BATCH_SIZE: 40              # Larger batches for better performance
+      MAX_JOBS_PER_SESSION: 2000          # Higher limit for parallel processing
+      
+      # PARALLEL SCRAPING CONFIG - Container 1
+      JOB_START_PERCENT: 0               # Start from 0% (beginning)
+      JOB_END_PERCENT: 50                # Process to 50% (first half)
+      CONTAINER_ID: "1"                   # Identifier for logging
+      
+      # Enable V2 automation mode
+      AUTOMATION_MODE: "true"
+      AUTO_SOLVE_CAPTCHA: "true"
+      PIPELINE_VERSION: "v2"
+      ENABLE_COMPREHENSIVE_VALIDATION: "true"
+      ENABLE_ENHANCED_CLEANING: "true"
+      ENABLE_SINGLE_DB_LOAD: "true"
+      ENABLE_REALTIME_ENHANCEMENT: "true"
+      
+    volumes:
+      - ./data:/app/data
+      - scraper_logs_1:/app/data/logs
+    ports:
+      - "8001:8000"                       # Different port for container 1
+    networks:
+      - scraper-network
+    restart: unless-stopped
+    
+    # Resource limits - Optimized for high-memory machine
+    deploy:
+      resources:
+        limits:
+          memory: 12G                     # 12GB for container 1
+          cpus: '6.0'                     # 6 cores for container 1
+        reservations:
+          memory: 6G
+          cpus: '3.0'
+
+  # Container 2: Second half of jobs (4538-9074)
+  job-scraper-2:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-scraper-2
+    environment:
+      # Database configuration - connect to main database server
+      DB_HOST: 139.162.3.114          # Database server IP
+      DB_PORT: 5432
+      DB_NAME: job_market_data
+      DB_USER: jobscraper
+      DB_PASSWORD: working
+      
+      # Application configuration
+      ENVIRONMENT: production
+      PYTHONPATH: /app/src
+      
+      # Browser configuration for Docker
+      DISPLAY: :99
+      
+      # Scraper settings - OPTIMIZED FOR PARALLEL PROCESSING
+      SCRAPER_HEADLESS: "true"
+      SCRAPER_BATCH_SIZE: 40              # Larger batches for better performance
+      MAX_JOBS_PER_SESSION: 2000          # Higher limit for parallel processing
+      
+      # PARALLEL SCRAPING CONFIG - Container 2
+      JOB_START_PERCENT: 50               # Start from 50% (middle)
+      JOB_END_PERCENT: 100                # Process to 100% (end)
+      CONTAINER_ID: "2"                   # Identifier for logging
+      
+      # Enable V2 automation mode
+      AUTOMATION_MODE: "true"
+      AUTO_SOLVE_CAPTCHA: "true"
+      PIPELINE_VERSION: "v2"
+      ENABLE_COMPREHENSIVE_VALIDATION: "true"
+      ENABLE_ENHANCED_CLEANING: "true"
+      ENABLE_SINGLE_DB_LOAD: "true"
+      ENABLE_REALTIME_ENHANCEMENT: "true"
+      
+    volumes:
+      - ./data:/app/data
+      - scraper_logs_2:/app/data/logs
+    ports:
+      - "8002:8000"                       # Different port for container 2
+    networks:
+      - scraper-network
+    restart: unless-stopped
+    
+    # Resource limits - Optimized for high-memory machine  
+    deploy:
+      resources:
+        limits:
+          memory: 12G                     # 12GB for container 2
+          cpus: '6.0'                     # 6 cores for container 2
+        reservations:
+          memory: 6G
+          cpus: '3.0'
+
+  # Optional: Adminer for database management (connect to remote DB)
+  adminer:
+    image: adminer:latest
+    container_name: job-scraper-adminer-parallel
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: 139.162.3.114  # Point to database machine
+    networks:
+      - scraper-network
+    profiles:
+      - admin
+
+  # Optional: Monitoring for both containers
+  monitor:
+    build: 
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: job-scraper-monitor-parallel
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./data:/app/data:ro
+      - scraper_logs_1:/app/logs/container1:ro
+      - scraper_logs_2:/app/logs/container2:ro
+    networks:
+      - scraper-network
+    profiles:
+      - monitoring
+
+volumes:
+  scraper_logs_1:
+    driver: local
+  scraper_logs_2:
+    driver: local
+
+networks:
+  scraper-network:
+    driver: bridge
+
+# Usage Instructions:
+# 1. Database IP: 139.162.3.114 (configured)
+# 2. Ensure database machine allows connections on port 5432
+# 3. Deploy: docker-compose -f docker-compose.parallel.yml up -d
+# 4. Monitor: 
+#    - Container 1: docker logs -f job-scraper-1
+#    - Container 2: docker logs -f job-scraper-2
+#    - Both: docker-compose -f docker-compose.parallel.yml logs -f
