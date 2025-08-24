@@ -29,10 +29,18 @@ except ImportError as e:
     sys.exit(1)
 
 # Override settings with Docker environment variables for debugging
-if os.getenv('SCRAPER_BATCH_SIZE'):
-    SCRAPER_SETTINGS['batch_size'] = int(os.getenv('SCRAPER_BATCH_SIZE'))
-if os.getenv('MAX_JOBS_PER_SESSION'):
-    SCRAPER_SETTINGS['max_jobs_per_session'] = int(os.getenv('MAX_JOBS_PER_SESSION'))
+batch_size_env = os.getenv('SCRAPER_BATCH_SIZE')
+max_jobs_env = os.getenv('MAX_JOBS_PER_SESSION')
+
+print(f"[ENV] SCRAPER_BATCH_SIZE: {batch_size_env}")
+print(f"[ENV] MAX_JOBS_PER_SESSION: {max_jobs_env}")
+
+if batch_size_env:
+    SCRAPER_SETTINGS['batch_size'] = int(batch_size_env)
+    print(f"[OVERRIDE] Set batch_size to {SCRAPER_SETTINGS['batch_size']}")
+if max_jobs_env:
+    SCRAPER_SETTINGS['max_jobs_per_session'] = int(max_jobs_env)
+    print(f"[OVERRIDE] Set max_jobs_per_session to {SCRAPER_SETTINGS['max_jobs_per_session']}")
 
 # Enhanced logging for V2
 logging.basicConfig(

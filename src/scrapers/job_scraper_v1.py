@@ -1387,9 +1387,13 @@ class JobScraper:
                 return
             
             # Apply max jobs per session limit for debugging
+            logger.info(f"[DEBUG] Loaded {len(job_urls)} job URLs, max_jobs_per_session = {self.max_jobs_per_session}")
             if len(job_urls) > self.max_jobs_per_session:
-                logger.info(f"[DEBUG] Limiting jobs from {len(job_urls)} to {self.max_jobs_per_session} for this session")
+                logger.info(f"[DEBUG] LIMITING jobs from {len(job_urls)} to {self.max_jobs_per_session} for this session")
                 job_urls = job_urls[:self.max_jobs_per_session]
+                logger.info(f"[DEBUG] After limiting: {len(job_urls)} jobs will be processed")
+            else:
+                logger.info(f"[DEBUG] No limiting needed: {len(job_urls)} <= {self.max_jobs_per_session}")
             
             # Process jobs
             captcha_mode = "Auto + Manual fallback" if self.auto_solve_captcha else "Manual only"

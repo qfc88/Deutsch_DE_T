@@ -32,6 +32,7 @@ def main():
     logger.info(f"   [CONFIG] Auto Solve CAPTCHA: {os.getenv('AUTO_SOLVE_CAPTCHA', 'false')}")
     logger.info(f"   [CONFIG] Headless Mode: {os.getenv('SCRAPER_HEADLESS', 'true')}")
     logger.info(f"   [CONFIG] Batch Size: {os.getenv('SCRAPER_BATCH_SIZE', '50')}")
+    logger.info(f"   [CONFIG] Max Jobs Per Session: {os.getenv('MAX_JOBS_PER_SESSION', '1000')}")
     logger.info(f"   [CONFIG] Database: {os.getenv('DB_NAME', 'scrape')}")
     
     if pipeline_version == 'v2':
