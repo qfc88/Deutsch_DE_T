@@ -28,6 +28,12 @@ except ImportError as e:
     print(f"[ERROR] Settings import failed: {e}")
     sys.exit(1)
 
+# Override settings with Docker environment variables for debugging
+if os.getenv('SCRAPER_BATCH_SIZE'):
+    SCRAPER_SETTINGS['batch_size'] = int(os.getenv('SCRAPER_BATCH_SIZE'))
+if os.getenv('MAX_JOBS_PER_SESSION'):
+    SCRAPER_SETTINGS['max_jobs_per_session'] = int(os.getenv('MAX_JOBS_PER_SESSION'))
+
 # Enhanced logging for V2
 logging.basicConfig(
     level=getattr(logging, LOGGING_SETTINGS.get('level', 'INFO')),

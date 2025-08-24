@@ -1386,10 +1386,16 @@ class JobScraper:
                 logger.info("All jobs already scraped!")
                 return
             
+            # Apply max jobs per session limit for debugging
+            if len(job_urls) > self.max_jobs_per_session:
+                logger.info(f"[DEBUG] Limiting jobs from {len(job_urls)} to {self.max_jobs_per_session} for this session")
+                job_urls = job_urls[:self.max_jobs_per_session]
+            
             # Process jobs
             captcha_mode = "Auto + Manual fallback" if self.auto_solve_captcha else "Manual only"
             logger.info(f"Starting to scrape {len(job_urls)} jobs...")
             logger.info(f"CAPTCHA solving mode: {captcha_mode}")
+            logger.info(f"[DEBUG] Max jobs per session: {self.max_jobs_per_session}")
             
             scraped_jobs = await self.process_jobs_batch(job_urls, batch_size=self.batch_size)
             
