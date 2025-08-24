@@ -69,7 +69,7 @@ services:
         condition: service_healthy
     networks:
       - scraper-network
-    restart: "no"
+    restart: unless-stopped
     
     # Resource limits
     deploy:
