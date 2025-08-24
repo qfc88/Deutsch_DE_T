@@ -45,10 +45,10 @@ services:
       # Browser configuration for Docker
       DISPLAY: :99
       
-      # Scraper settings
+      # Scraper settings - DEBUG MODE
       SCRAPER_HEADLESS: "true"
-      SCRAPER_BATCH_SIZE: 50
-      MAX_JOBS_PER_SESSION: 1000
+      SCRAPER_BATCH_SIZE: 5               # DEBUG: Small batches
+      MAX_JOBS_PER_SESSION: 10            # DEBUG: Limited jobs for testing
       
       # Enable V2 automation mode with enhanced features
       AUTOMATION_MODE: "true"
