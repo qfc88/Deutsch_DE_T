@@ -104,7 +104,7 @@ class JobScraper:
         
         # Generate session ID for file management
         if self.use_sessions:
-            self.session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.session_id = f"scrape_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         else:
             self.session_id = None
         
@@ -113,9 +113,13 @@ class JobScraper:
         if FILE_MANAGER_AVAILABLE and self.use_sessions:
             try:
                 self.file_manager = FileManager()
-                logger.info("[SUCCESS] FileManager initialized with session support")
+                # Use coordinated session management - try to resume existing session
                 if self.session_id:
-                    logger.info(f"Session ID: {self.session_id}")
+                    self.session_id = self.file_manager.start_new_session(self.session_id, force_new=False)
+                else:
+                    self.session_id = self.file_manager.start_new_session()
+                logger.info("[SUCCESS] FileManager initialized with session support")
+                logger.info(f"Active Session ID: {self.session_id}")
             except Exception as e:
                 logger.warning(f"[ERROR] Failed to initialize FileManager: {e}")
                 self.use_sessions = False
@@ -1455,7 +1459,12 @@ async def main():
     )
     
     input_path = PATHS.get('input_csv', 'data/input/job_urls.csv')
-    await scraper.run(input_csv_path=input_path, resume=enable_resume)
+    try:
+        await scraper.run(input_csv_path=input_path, resume=enable_resume)
+    finally:
+        # Ensure session cleanup
+        if scraper.file_manager:
+            scraper.file_manager.cleanup_session()
 
 
 if __name__ == "__main__":

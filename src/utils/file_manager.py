@@ -10,7 +10,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import shutil
 import uuid
 import hashlib
@@ -60,10 +60,102 @@ class FileManager:
             directory.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Directory ensured: {directory}")
     
-    def start_new_session(self, session_name: str = None) -> str:
+    def find_active_session(self) -> str:
+        """Find the most recent active session to resume"""
+        try:
+            # Look for session directories created within resume window
+            from ..config.settings import FILE_MANAGEMENT_SETTINGS
+            resume_hours = FILE_MANAGEMENT_SETTINGS.get('session_resume_hours', 24)
+            current_time = datetime.now()
+            cutoff_time = current_time - timedelta(hours=resume_hours)
+            
+            session_dirs = []
+            for item in self.output_dir.iterdir():
+                if item.is_dir() and item.name.startswith('scrape_session_'):
+                    try:
+                        # Extract timestamp from session name
+                        timestamp_str = item.name.replace('scrape_session_', '')
+                        session_time = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                        
+                        if session_time >= cutoff_time:
+                            session_dirs.append((item.name, session_time))
+                    except ValueError:
+                        continue
+            
+            if session_dirs:
+                # Return the most recent session
+                session_dirs.sort(key=lambda x: x[1], reverse=True)
+                latest_session = session_dirs[0][0]
+                logger.info(f"Found active session to resume: {latest_session}")
+                return latest_session
+            
+        except Exception as e:
+            logger.warning(f"Error finding active session: {e}")
+        
+        return None
+
+    def create_session_lock(self, session_id: str) -> bool:
+        """Create a lock file for the session to prevent concurrent access"""
+        try:
+            lock_file = self.output_dir / session_id / ".session_lock"
+            lock_file.parent.mkdir(exist_ok=True)
+            
+            if lock_file.exists():
+                # Check if lock is stale (older than 1 hour)
+                lock_time = datetime.fromtimestamp(lock_file.stat().st_mtime)
+                if datetime.now() - lock_time > timedelta(hours=1):
+                    lock_file.unlink()  # Remove stale lock
+                    logger.info(f"Removed stale session lock for {session_id}")
+                else:
+                    logger.warning(f"Session {session_id} is locked by another process")
+                    return False
+            
+            # Create new lock
+            with open(lock_file, 'w') as f:
+                f.write(f"locked_at={datetime.now().isoformat()}\n")
+                f.write(f"process_id={os.getpid()}\n")
+            
+            logger.debug(f"Created session lock for {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to create session lock: {e}")
+            return True  # Proceed without lock if can't create
+
+    def remove_session_lock(self, session_id: str):
+        """Remove session lock file"""
+        try:
+            lock_file = self.output_dir / session_id / ".session_lock"
+            if lock_file.exists():
+                lock_file.unlink()
+                logger.debug(f"Removed session lock for {session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to remove session lock: {e}")
+
+    def start_new_session(self, session_name: str = None, force_new: bool = False) -> str:
         """Start a new scraping session with unique identifier"""
+        from ..config.settings import FILE_MANAGEMENT_SETTINGS
+        auto_resume = FILE_MANAGEMENT_SETTINGS.get('auto_resume_sessions', True)
+        force_new = force_new or FILE_MANAGEMENT_SETTINGS.get('force_new_session', False)
+        
+        # Try to find existing active session unless forced to create new
+        if not force_new and not session_name and auto_resume:
+            existing_session = self.find_active_session()
+            if existing_session and self.create_session_lock(existing_session):
+                self.current_session_id = existing_session
+                self.session_start_time = datetime.now()
+                logger.info(f"Resumed existing session: {existing_session}")
+                return existing_session
+        
+        # Create new session
         if not session_name:
             session_name = f"scrape_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Try to acquire lock for new session
+        if not self.create_session_lock(session_name):
+            # If can't acquire lock, create with unique suffix
+            session_name = f"scrape_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.getpid()}"
+            self.create_session_lock(session_name)
         
         self.current_session_id = session_name
         self.session_start_time = datetime.now()
@@ -324,6 +416,22 @@ class FileManager:
             
         except Exception as e:
             logger.error(f"Error cleaning temp files: {e}")
+
+    def cleanup_session(self):
+        """Clean up session resources and remove locks"""
+        try:
+            if self.current_session_id:
+                self.remove_session_lock(self.current_session_id)
+                logger.info(f"Session cleanup completed for: {self.current_session_id}")
+        except Exception as e:
+            logger.warning(f"Error during session cleanup: {e}")
+
+    def __del__(self):
+        """Cleanup session when FileManager is destroyed"""
+        try:
+            self.cleanup_session()
+        except:
+            pass  # Ignore errors during destruction
     
     def get_session_statistics(self, session_id: str = None) -> Dict[str, Any]:
         """Get statistics for a scraping session"""

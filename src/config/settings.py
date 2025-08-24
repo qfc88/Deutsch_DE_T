@@ -113,6 +113,9 @@ FILE_MANAGEMENT_SETTINGS = {
     'consolidate_on_completion': True,       # Auto-consolidate when scraping completes
     'clean_temp_files_hours': 24,           # Clean temp files after N hours
     'max_backup_files': 10,                  # Keep max N backup sets
+    'session_resume_hours': 24,              # Resume sessions created within N hours
+    'auto_resume_sessions': True,            # Automatically resume recent sessions
+    'force_new_session': False,              # Force creation of new session instead of resuming
 }
 
 # =============================================================================
