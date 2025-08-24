@@ -298,14 +298,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Function to update data quality metrics
-CREATE OR REPLACE FUNCTION update_data_quality_metrics(job_id UUID)
+CREATE OR REPLACE FUNCTION update_data_quality_metrics(target_job_id UUID)
 RETURNS VOID AS $$
 DECLARE
     job_record jobs;
     quality_score FLOAT;
 BEGIN
     -- Get job record
-    SELECT * INTO job_record FROM jobs WHERE id = job_id;
+    SELECT * INTO job_record FROM jobs WHERE id = target_job_id;
     
     -- Calculate quality score
     quality_score := calculate_data_quality_score(job_record);
@@ -317,7 +317,7 @@ BEGIN
         has_telephone, has_email, has_job_description, has_ref_nr, 
         has_external_link, has_application_link, completeness_score
     ) VALUES (
-        job_id,
+        target_job_id,
         CASE WHEN job_record.profession IS NOT NULL AND LENGTH(job_record.profession) > 0 THEN 1 ELSE 0 END,
         CASE WHEN job_record.salary IS NOT NULL AND LENGTH(job_record.salary) > 0 THEN 1 ELSE 0 END,
         CASE WHEN job_record.company_name IS NOT NULL AND LENGTH(job_record.company_name) > 0 THEN 1 ELSE 0 END,
