@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Single container for high-memory machine - Process jobs 20% to 100%
+  job-scraper:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-scraper-high-mem
+    environment:
+      # Database configuration - connect to main database server
+      DB_HOST: 139.162.3.114          # Main database server IP
+      DB_PORT: 5432
+      DB_NAME: job_market_data
+      DB_USER: jobscraper
+      DB_PASSWORD: working
+      
+      # Application configuration
+      ENVIRONMENT: production
+      PYTHONPATH: /app/src
+      
+      # Browser configuration for Docker
+      DISPLAY: :99
+      
+      # Scraper settings - OPTIMIZED FOR HIGH MEMORY MACHINE
+      SCRAPER_HEADLESS: "true"
+      SCRAPER_BATCH_SIZE: 50              # Large batches for high memory
+      MAX_JOBS_PER_SESSION: 3000          # High limit for high memory
+      CONCURRENT_JOBS: 5                  # Process 5 jobs simultaneously
+      
+      # JOB RANGE - Process from 20% to end
+      JOB_START_PERCENT: 20               # Start from 20% (skip first 20%)
+      JOB_END_PERCENT: 100                # Process to 100% (end)
+      CONTAINER_ID: "HIGH-MEM"            # Identifier for logging
+      
+      # Enable V2 automation mode
+      AUTOMATION_MODE: "true"
+      AUTO_SOLVE_CAPTCHA: "true"
+      PIPELINE_VERSION: "v2"
+      ENABLE_COMPREHENSIVE_VALIDATION: "true"
+      ENABLE_ENHANCED_CLEANING: "true"
+      ENABLE_SINGLE_DB_LOAD: "true"
+      ENABLE_REALTIME_ENHANCEMENT: "true"
+      
+    volumes:
+      - ./data:/app/data
+      - scraper_logs:/app/data/logs
+    ports:
+      - "8001:8000"
+    networks:
+      - scraper-network
+    restart: unless-stopped
+    
+    # Resource limits - Optimized for high memory machine
+    deploy:
+      resources:
+        limits:
+          memory: 20G                     # 20GB for high concurrent processing
+          cpus: '10.0'                    # Most CPU cores
+        reservations:
+          memory: 10G
+          cpus: '5.0'
+
+  # Optional: Adminer for database management
+  adminer:
+    image: adminer:latest
+    container_name: job-scraper-adminer-high-mem
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: 139.162.3.114  # Connect to main database server
+    networks:
+      - scraper-network
+    profiles:
+      - admin
+
+volumes:
+  scraper_logs:
+    driver: local
+
+networks:
+  scraper-network:
+    driver: bridge
+
+# Usage Instructions for high-memory machine:
+# 1. Main server processes jobs 0-20% (first ~1814 jobs)  
+# 2. High-memory machine processes jobs 20-100% (remaining ~7260 jobs)
+# 3. Deploy: docker-compose -f docker-compose.high-memory.yml up -d
+# 4. Monitor: docker logs -f job-scraper-high-mem
+# 5. Speed: 5 concurrent jobs = 5x faster than single job processing
