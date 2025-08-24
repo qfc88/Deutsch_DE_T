@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS jobs (
     content_hash VARCHAR(64),                       -- Hash for duplicate detection
     
     -- Indexes and constraints
-    CONSTRAINT unique_ref_nr UNIQUE(ref_nr),
     CONSTRAINT unique_source_url UNIQUE(source_url)
 );
 

@@ -19,13 +19,13 @@ TWOCAPTCHA_API_KEY = "5865b4e02e5bc91f671a60bc18fd75d1"
 
 # Main scraper settings
 SCRAPER_SETTINGS = {
-    'headless': False,             # Set to False for local debugging, True for Docker/production
-    'timeout': 30000,               # Page load timeout in milliseconds
-    'delay_between_jobs': 2,        # Delay between job scraping in seconds (slower for debugging)
-    'batch_size': 5,                # Process only 5 jobs for debugging
-    'max_retries': 1,               # Max retries for failed jobs (reduced for debugging)
-    'save_every_n_jobs': 5,         # Save progress every 5 jobs for debugging
-    'max_jobs_per_session': 10,     # Maximum 10 jobs per session for debugging
+    'headless': True,               # Set to True for faster performance
+    'timeout': 15000,               # Reduced timeout for faster processing
+    'delay_between_jobs': 0.5,      # Minimal delay for speed
+    'batch_size': 100,              # Large batch size for efficiency
+    'max_retries': 2,               # Balanced retries
+    'save_every_n_jobs': 50,        # Save less frequently for speed
+    'max_jobs_per_session': 1000,   # Large session capacity
     'enable_resume': True,          # Enable resume functionality
     'use_sessions': True,           # Use session-based file management
 }
@@ -147,10 +147,10 @@ DATA_CLEANING_SETTINGS = {
 # =============================================================================
 
 CONTACT_SCRAPER_SETTINGS = {
-    'max_contact_pages': 10,
+    'max_contact_pages': 15,
     'contact_page_timeout': 5000,            # Skip contact pages that load >5 seconds (optimized for speed)
-    'delay_between_pages': 2,
-    'max_search_depth': 3,                   # Maximum levels to search for contacts
+    'delay_between_pages': 0.5,              # Reduced delay for speed
+    'max_search_depth': 2,                   # Reduced depth for faster processing
     'preferred_email_domains': [              # Prioritize certain email domains
         'hr', 'jobs', 'karriere', 'bewerbung', 'personal'
     ],
@@ -158,7 +158,7 @@ CONTACT_SCRAPER_SETTINGS = {
         '/kontakt', '/impressum', '/karriere', '/jobs', '/bewerbung'
     ],
     'enable_deep_scraping': True,            # Enable deep contact mining
-    'parallel_contact_requests': 3,          # Parallel contact page requests
+    'parallel_contact_requests': 5,          # More parallel requests for speed
 }
 
 # =============================================================================
