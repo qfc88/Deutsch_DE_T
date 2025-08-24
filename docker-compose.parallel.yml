@@ -26,6 +26,7 @@ services:
       SCRAPER_HEADLESS: "true"
       SCRAPER_BATCH_SIZE: 40              # Larger batches for better performance
       MAX_JOBS_PER_SESSION: 2000          # Higher limit for parallel processing
+      CONCURRENT_JOBS: 3                  # Process 3 jobs simultaneously
       
       # PARALLEL SCRAPING CONFIG - Container 1
       JOB_START_PERCENT: 0               # Start from 0% (beginning)
@@ -85,6 +86,7 @@ services:
       SCRAPER_HEADLESS: "true"
       SCRAPER_BATCH_SIZE: 40              # Larger batches for better performance
       MAX_JOBS_PER_SESSION: 2000          # Higher limit for parallel processing
+      CONCURRENT_JOBS: 3                  # Process 3 jobs simultaneously
       
       # PARALLEL SCRAPING CONFIG - Container 2
       JOB_START_PERCENT: 50               # Start from 50% (middle)

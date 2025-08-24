@@ -1106,12 +1106,98 @@ class JobScraper:
             logger.error(f"Error loading existing progress: {e}")
             return []
     
+    async def process_jobs_parallel(self, job_urls: List[Dict], concurrent_jobs: int = 2) -> List[Dict]:
+        """Process multiple jobs concurrently for faster scraping"""
+        all_scraped_jobs = []
+        total_jobs = len(job_urls)
+        
+        # Create semaphore to limit concurrent jobs
+        semaphore = asyncio.Semaphore(concurrent_jobs)
+        
+        async def scrape_job_with_semaphore(job_data: Dict, job_number: int):
+            async with semaphore:
+                # Create separate page for each concurrent job
+                page = await self.context.new_page()
+                try:
+                    logger.info(f"[PARALLEL] Processing job {job_number}/{total_jobs} on separate page")
+                    return await self.scrape_single_job(page, job_data)
+                finally:
+                    await page.close()
+        
+        # Create tasks for all jobs
+        tasks = []
+        for i, job_data in enumerate(job_urls):
+            task = scrape_job_with_semaphore(job_data, i + 1)
+            tasks.append(task)
+        
+        # Process jobs with progress tracking
+        batch_size = concurrent_jobs * 5  # Save every 5 rounds
+        for i in range(0, len(tasks), batch_size):
+            batch_tasks = tasks[i:i + batch_size]
+            
+            logger.info(f"[PARALLEL] Processing batch {i//batch_size + 1}: jobs {i+1} to {min(i+batch_size, total_jobs)}")
+            
+            try:
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                
+                # Process results and handle exceptions
+                for j, result in enumerate(batch_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Parallel job {i+j+1} failed: {result}")
+                        # Create error record
+                        job_data = job_urls[i+j]
+                        error_job = {
+                            'profession': None, 'salary': None, 'company_name': None,
+                            'location': None, 'start_date': None, 'telephone': None,
+                            'email': None, 'job_description': None,
+                            'ref_nr': job_data.get('ref_nr'), 'external_link': None,
+                            'application_link': None, 'job_type': None,
+                            'ausbildungsberuf': None, 'application_method': None,
+                            'contact_person': None, 'scraped_at': datetime.now().isoformat(),
+                            'source_url': job_data.get('job_url'),
+                            'error': f"Parallel processing error: {str(result)}",
+                            'captcha_solved': False, 'is_external_redirect': False
+                        }
+                        all_scraped_jobs.append(error_job)
+                        self.stats['errors'] += 1
+                    else:
+                        all_scraped_jobs.append(result)
+                        self.stats['total_processed'] += 1
+                        if not result.get('error'):
+                            self.stats['successful_scrapes'] += 1
+                        if result.get('captcha_solved'):
+                            self.stats['captcha_encounters'] += 1
+                            self.stats['captcha_solved'] += 1
+                
+                # Save progress
+                if len(all_scraped_jobs) % self.batch_size == 0:
+                    batch_number = len(all_scraped_jobs) // self.batch_size
+                    await self.save_progress(all_scraped_jobs, batch_number)
+                    
+                    success_rate = (self.stats['successful_scrapes'] / max(self.stats['total_processed'], 1)) * 100
+                    logger.info(f"[PARALLEL] Progress: {len(all_scraped_jobs)}/{total_jobs} jobs ({success_rate:.1f}% success)")
+                    
+            except Exception as e:
+                logger.error(f"Batch processing error: {e}")
+                continue
+                
+            # Small delay between batches to avoid overwhelming
+            await asyncio.sleep(1)
+        
+        return all_scraped_jobs
+    
     async def process_jobs_batch(self, job_urls: List[Dict], batch_size: int = 10) -> List[Dict]:
         """Process jobs in batches to avoid overwhelming the server"""
         all_scraped_jobs = []
         total_jobs = len(job_urls)
         
-        # Use single page for all jobs to maintain session
+        # Check if parallel processing is enabled
+        concurrent_jobs = int(os.getenv('CONCURRENT_JOBS', 1))
+        if concurrent_jobs > 1:
+            logger.info(f"[PARALLEL] Using parallel processing with {concurrent_jobs} concurrent jobs")
+            return await self.process_jobs_parallel(job_urls, concurrent_jobs)
+        
+        # Use single page for all jobs to maintain session (original method)
         page = await self.context.new_page()
         
         for i, job_data in enumerate(job_urls):
