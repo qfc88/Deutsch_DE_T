@@ -352,7 +352,7 @@ $$ LANGUAGE plpgsql;
 -- =============================================================================
 
 -- Trigger to automatically update data quality when job is inserted/updated
-CREATE OR REPLACE FUNCTION trigger_update_data_quality()
+CREATE OR REPLACE FUNCTION trigger_update_data_quality_before()
 RETURNS TRIGGER AS $$
 BEGIN
     -- Update the data_quality_score in jobs table
@@ -361,17 +361,29 @@ BEGIN
     -- Update last_updated timestamp
     NEW.last_updated := NOW();
     
-    -- Schedule quality metrics update (call after insert/update)
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION trigger_update_data_quality_after()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update quality metrics after the job is inserted
     PERFORM update_data_quality_metrics(NEW.id);
     
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_jobs_quality_update
+CREATE TRIGGER trigger_jobs_quality_update_before
     BEFORE INSERT OR UPDATE ON jobs
     FOR EACH ROW
-    EXECUTE FUNCTION trigger_update_data_quality();
+    EXECUTE FUNCTION trigger_update_data_quality_before();
+
+CREATE TRIGGER trigger_jobs_quality_update_after
+    AFTER INSERT OR UPDATE ON jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_update_data_quality_after();
 
 -- =============================================================================
 -- Schema version tracking
