@@ -231,7 +231,15 @@ TESTING_SETTINGS = {
 # Production environment settings
 if os.getenv('ENVIRONMENT') == 'production':
     SCRAPER_SETTINGS['headless'] = True
-    SCRAPER_SETTINGS['batch_size'] = 50
+    # Override with environment variables if provided
+    if os.getenv('SCRAPER_BATCH_SIZE'):
+        SCRAPER_SETTINGS['batch_size'] = int(os.getenv('SCRAPER_BATCH_SIZE'))
+    else:
+        SCRAPER_SETTINGS['batch_size'] = 50
+    
+    if os.getenv('MAX_JOBS_PER_SESSION'):
+        SCRAPER_SETTINGS['max_jobs_per_session'] = int(os.getenv('MAX_JOBS_PER_SESSION'))
+    
     LOGGING_SETTINGS['level'] = 'WARNING'
     DATABASE_SETTINGS['min_connections'] = 10
     DATABASE_SETTINGS['max_connections'] = 50
