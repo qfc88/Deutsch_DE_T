@@ -478,6 +478,12 @@ class JobDataLoader:
                     except Exception as e:
                         logger.error(f"Error inserting job: {e}")
                         logger.error(f"Job data: {job_data.get('ref_nr', 'no-ref')}")
+                        logger.error(f"Job ID: {job_data.get('id', 'no-id')}")
+                        logger.error(f"Company ID: {job_data.get('company_id', 'no-company-id')}")
+                        logger.error(f"Status: {job_data.get('status', 'no-status')}")
+                        logger.error(f"Is Valid: {job_data.get('is_valid', 'no-valid-flag')}")
+                        # Log the actual SQL values for debugging
+                        logger.debug(f"Full job data keys: {list(job_data.keys())}")
                         self.stats['errors'] += 1
                         continue
                         
