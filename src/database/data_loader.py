@@ -490,6 +490,14 @@ class JobDataLoader:
     async def load_single_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """Load a single job into database realtime"""
         try:
+            # Ensure database connection
+            if not self.db_manager.is_connected:
+                logger.info("Database not connected, connecting...")
+                connected = await self.db_manager.connect()
+                if not connected:
+                    logger.error("Failed to connect to database")
+                    return {'loaded': 0, 'error': 'Database connection failed'}
+            
             # Process single job as list
             result = await self.process_job_data([job_data], source_file="realtime")
             return {'loaded': 1 if result else 0, 'job_id': job_data.get('ref_nr', 'unknown')}
@@ -532,6 +540,14 @@ class JobDataLoader:
     async def process_job_data(self, raw_jobs: List[Dict[str, Any]], source_file: str = None) -> bool:
         """Process and load job data into database"""
         try:
+            # Ensure database connection
+            if not self.db_manager.is_connected:
+                logger.info("Database not connected, connecting...")
+                connected = await self.db_manager.connect()
+                if not connected:
+                    logger.error("Failed to connect to database")
+                    return False
+            
             total_jobs = len(raw_jobs)
             logger.info(f"Processing {total_jobs} jobs from {source_file or 'data'}")
             

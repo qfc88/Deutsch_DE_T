@@ -671,17 +671,46 @@ class JobScraper:
             logger.warning(f"Error scraping application link {application_url}: {e}")
             return {'phone': None, 'email': None, 'contact_person': None}
     
-    async def scrape_single_job(self, page: Page, job_data: Dict) -> Dict:
+    async def scrape_single_job(self, page: Page, job_data: Dict, retry_count: int = 0) -> Dict:
         """Scrape a single job page and return structured data"""
         job_url = job_data['job_url']
         ref_nr_from_csv = job_data['ref_nr']
+        max_retries = 3
         
         try:
-            logger.info(f"Scraping job: {job_url}")
+            logger.info(f"Scraping job: {job_url} (attempt {retry_count + 1}/{max_retries + 1})")
             
-            # Navigate to job page
-            await page.goto(job_url, timeout=30000)
-            await page.wait_for_load_state('networkidle', timeout=15000)
+            # Navigate to job page with crash detection
+            try:
+                await page.goto(job_url, timeout=30000)
+                await page.wait_for_load_state('networkidle', timeout=15000)
+            except Exception as nav_error:
+                if "Page crashed" in str(nav_error) or "Target page, context or browser has been closed" in str(nav_error):
+                    logger.warning(f"🔥 Page crash detected for {job_url}")
+                    
+                    if retry_count < max_retries:
+                        logger.info(f"🔄 Restarting browser and retrying job (attempt {retry_count + 2}/{max_retries + 1})")
+                        
+                        # Close browser completely
+                        if self.browser:
+                            try:
+                                await self.browser.close()
+                            except:
+                                pass
+                        
+                        # Reinitialize browser
+                        await self.setup_browser()
+                        
+                        # Get new page from fresh browser
+                        new_page = await self.context.new_page()
+                        
+                        # Retry with new browser and page
+                        return await self.scrape_single_job(new_page, job_data, retry_count + 1)
+                    else:
+                        logger.error(f"❌ Max retries ({max_retries}) exceeded for {job_url}")
+                        raise nav_error
+                else:
+                    raise nav_error
             
             # Handle cookie consent dialog
             await self.handle_cookie_consent(page)
@@ -890,6 +919,26 @@ class JobScraper:
             return scraped_data
             
         except Exception as e:
+            # Check if it's a crash-related error that wasn't caught above
+            if ("Page crashed" in str(e) or "Target page, context or browser has been closed" in str(e)) and retry_count < max_retries:
+                logger.warning(f"🔥 Crash detected in main exception handler for {job_url}")
+                
+                # Close browser completely
+                if self.browser:
+                    try:
+                        await self.browser.close()
+                    except:
+                        pass
+                
+                # Reinitialize browser
+                await self.setup_browser()
+                
+                # Get new page from fresh browser
+                new_page = await self.context.new_page()
+                
+                # Retry with new browser and page
+                return await self.scrape_single_job(new_page, job_data, retry_count + 1)
+            
             logger.error(f"Error scraping job {job_url}: {e}")
             self.failed_count += 1
             return {
@@ -1031,16 +1080,51 @@ class JobScraper:
             job_number = i + 1
             logger.info(f"Processing job {job_number}/{total_jobs}")
             
-            # Scrape job with enhanced tracking
-            scraped_job = await self.scrape_single_job(page, job_data)
-            all_scraped_jobs.append(scraped_job)
+            # Scrape job with enhanced tracking and crash recovery
+            try:
+                scraped_job = await self.scrape_single_job(page, job_data)
+                all_scraped_jobs.append(scraped_job)
+            except Exception as e:
+                # If scrape_single_job completely fails after retries, create error record
+                logger.error(f"Complete failure for job {job_number}: {e}")
+                error_job = {
+                    'profession': None,
+                    'salary': None,
+                    'company_name': None,
+                    'location': None,
+                    'start_date': None,
+                    'telephone': None,
+                    'email': None,
+                    'job_description': None,
+                    'ref_nr': job_data.get('ref_nr'),
+                    'external_link': None,
+                    'application_link': None,
+                    'job_type': None,
+                    'ausbildungsberuf': None,
+                    'application_method': None,
+                    'contact_person': None,
+                    'scraped_at': datetime.now().isoformat(),
+                    'source_url': job_data.get('job_url'),
+                    'error': f"Complete failure after retries: {str(e)}",
+                    'captcha_solved': False,
+                    'is_external_redirect': False
+                }
+                all_scraped_jobs.append(error_job)
+                
+                # Try to create a new page for the next job if browser is still available
+                try:
+                    if self.context:
+                        page = await self.context.new_page()
+                except Exception as page_error:
+                    logger.warning(f"Failed to create new page, will try to continue: {page_error}")
             
             # Update statistics
             self.stats['total_processed'] += 1
-            if scraped_job.get('captcha_solved'):
+            current_job = all_scraped_jobs[-1]  # Get the job we just added
+            if current_job.get('captcha_solved'):
                 self.stats['captcha_encounters'] += 1
                 self.stats['captcha_solved'] += 1
-            if not scraped_job.get('error'):
+            if not current_job.get('error'):
                 self.stats['successful_scrapes'] += 1
             else:
                 self.stats['errors'] += 1

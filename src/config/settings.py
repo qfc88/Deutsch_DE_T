@@ -21,11 +21,11 @@ TWOCAPTCHA_API_KEY = "5865b4e02e5bc91f671a60bc18fd75d1"
 SCRAPER_SETTINGS = {
     'headless': False,             # Set to False for local debugging, True for Docker/production
     'timeout': 30000,               # Page load timeout in milliseconds
-    'delay_between_jobs': 0.3,      # Delay between job scraping in seconds (optimized for speed)
-    'batch_size': 50,               # Number of jobs to process before saving progress (optimized for speed)
+    'delay_between_jobs': 2,        # Delay between job scraping in seconds (slower for debugging)
+    'batch_size': 5,                # Process only 5 jobs for debugging
     'max_retries': 1,               # Max retries for failed jobs (reduced for debugging)
-    'save_every_n_jobs': 50,        # Save progress every N jobs (optimized for speed)
-    'max_jobs_per_session': 1000,   # Maximum jobs to scrape in one session (optimized for speed)
+    'save_every_n_jobs': 5,         # Save progress every 5 jobs for debugging
+    'max_jobs_per_session': 10,     # Maximum 10 jobs per session for debugging
     'enable_resume': True,          # Enable resume functionality
     'use_sessions': True,           # Use session-based file management
 }
@@ -175,13 +175,13 @@ LOGGING_SETTINGS = {
     'log_file_backup_count': 5,
     'separate_error_log': True,
     
-    # Component-specific log levels
+    # Component-specific log levels - Set to DEBUG for database debugging
     'component_levels': {
         'scrapers.job_scraper': 'INFO',
         'scrapers.captcha_solver': 'INFO',
         'scrapers.contact_scraper': 'WARNING',
-        'database.connection': 'WARNING',
-        'database.data_loader': 'INFO',
+        'database.connection': 'DEBUG',        # Enable debug logging for database
+        'database.data_loader': 'DEBUG',       # Enable debug logging for data loader
         'utils.file_manager': 'INFO',
     }
 }
