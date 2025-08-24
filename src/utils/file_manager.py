@@ -93,7 +93,7 @@ class FileManager:
             logger.warning(f"Error finding active session: {e}")
         
         return None
-
+    
     def create_session_lock(self, session_id: str) -> bool:
         """Create a lock file for the session to prevent concurrent access"""
         try:
@@ -121,7 +121,7 @@ class FileManager:
         except Exception as e:
             logger.warning(f"Failed to create session lock: {e}")
             return True  # Proceed without lock if can't create
-
+    
     def remove_session_lock(self, session_id: str):
         """Remove session lock file"""
         try:
@@ -131,7 +131,7 @@ class FileManager:
                 logger.debug(f"Removed session lock for {session_id}")
         except Exception as e:
             logger.warning(f"Failed to remove session lock: {e}")
-
+    
     def start_new_session(self, session_name: str = None, force_new: bool = False) -> str:
         """Start a new scraping session with unique identifier"""
         from ..config.settings import FILE_MANAGEMENT_SETTINGS
@@ -416,7 +416,7 @@ class FileManager:
             
         except Exception as e:
             logger.error(f"Error cleaning temp files: {e}")
-
+    
     def cleanup_session(self):
         """Clean up session resources and remove locks"""
         try:
@@ -425,7 +425,7 @@ class FileManager:
                 logger.info(f"Session cleanup completed for: {self.current_session_id}")
         except Exception as e:
             logger.warning(f"Error during session cleanup: {e}")
-
+    
     def __del__(self):
         """Cleanup session when FileManager is destroyed"""
         try:

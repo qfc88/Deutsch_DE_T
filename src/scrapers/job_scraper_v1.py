@@ -1437,7 +1437,6 @@ class JobScraper:
             if self.browser:
                 await self.browser.close()
 
-
 async def main():
     """Main function to run the scraper with enhanced configuration"""
     # Enhanced options from settings
@@ -1465,7 +1464,6 @@ async def main():
         # Ensure session cleanup
         if scraper.file_manager:
             scraper.file_manager.cleanup_session()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
