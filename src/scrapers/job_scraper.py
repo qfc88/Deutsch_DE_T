@@ -323,12 +323,12 @@ class JobScraper(JobScraperV1):
                     return True, job_data  # Continue even if enhancement failed
             
             except asyncio.TimeoutError:
-                logger.warning(f"⏰ Enhancement timeout: {job_data.get('ref_nr')}")
+                logger.warning(f"[TIMEOUT] Enhancement timeout: {job_data.get('ref_nr')}")
                 self.v2_stats['enhancement_failures'] += 1
                 return True, job_data
             
             except Exception as e:
-                logger.error(f"❌ Enhancement error for {job_data.get('ref_nr')}: {e}")
+                logger.error(f"[ERROR] Enhancement error for {job_data.get('ref_nr')}: {e}")
                 self.v2_stats['enhancement_failures'] += 1
                 return True, job_data  # Continue even if enhancement failed
             
@@ -386,7 +386,7 @@ class JobScraper(JobScraperV1):
                             logger.info(f"[DATABASE] {job_data.get('ref_nr', 'unknown')} loaded to database")
                         else:
                             self.v2_stats['database_failures'] += 1
-                            logger.warning(f"❌ Database load failed: {job_data.get('ref_nr', 'unknown')}")
+                            logger.warning(f"[ERROR] Database load failed: {job_data.get('ref_nr', 'unknown')}")
                             
                     except Exception as e:
                         self.v2_stats['database_failures'] += 1
@@ -403,7 +403,7 @@ class JobScraper(JobScraperV1):
                 quality_score = (self.v2_stats['loaded_count'] / self.v2_stats['scraped_count'])
                 self.v2_stats['data_quality_score'] = quality_score
             
-            logger.info(f"🎯 V2 Batch processed: {len(processed_jobs)} jobs")
+            logger.info(f"[V2] Batch processed: {len(processed_jobs)} jobs")
             logger.info(f"   [DATABASE] Loaded to DB: {self.v2_stats['loaded_count']}")
             logger.info(f"   [ENHANCE] Realtime enhancements: {self.v2_stats['realtime_enhancements']}")
             logger.info(f"   [SUCCESS] Enhancement successes: {self.v2_stats['enhancement_successes']}")
@@ -417,7 +417,7 @@ class JobScraper(JobScraperV1):
                           auto_solve_captcha: bool = True) -> Dict[str, Any]:
         """Run enhanced V2 scraping with integrated validation, cleaning, and DB loading"""
         try:
-            logger.info("🚀 Starting V2 enhanced scraping...")
+            logger.info("[START] Starting V2 enhanced scraping...")
             
             # Override the save_progress method to use V2
             original_save_progress = self.save_progress
@@ -433,7 +433,7 @@ class JobScraper(JobScraperV1):
             # Restore original method
             self.save_progress = original_save_progress
             
-            logger.info("🎉 V2 Enhanced scraping completed!")
+            logger.info("[COMPLETE] V2 Enhanced scraping completed!")
             return self.v2_stats
             
         except Exception as e:

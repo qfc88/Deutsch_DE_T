@@ -144,12 +144,12 @@ class JobScraper:
                 logger.info("[SUCCESS] CAPTCHA auto-solver initialized")
             except Exception as e:
                 logger.warning(f"[ERROR] Failed to initialize CAPTCHA solver: {e}")
-                logger.info("💡 Falling back to manual CAPTCHA solving")
+                logger.info("[INFO] Falling back to manual CAPTCHA solving")
                 self.auto_solve_captcha = False
         elif auto_solve_captcha and not CAPTCHA_SOLVER_AVAILABLE:
             logger.warning("[ERROR] CAPTCHA auto-solver requested but not available")
-            logger.info("💡 Install requirements: pip install transformers torch torchvision")
-            logger.info("💡 Falling back to manual CAPTCHA solving")
+            logger.info("[INFO] Install requirements: pip install transformers torch torchvision")
+            logger.info("[INFO] Falling back to manual CAPTCHA solving")
             self.auto_solve_captcha = False
         
         # Log initialization summary
@@ -281,7 +281,7 @@ class JobScraper:
                         # Check if button is visible
                         is_visible = await cookie_button.is_visible()
                         if is_visible:
-                            logger.info(f"🍪 Found cookie consent dialog, clicking: {selector}")
+                            logger.info(f"[COOKIE] Found cookie consent dialog, clicking: {selector}")
                             await cookie_button.click()
                             await asyncio.sleep(1)  # Wait for dialog to close
                             break
@@ -302,11 +302,11 @@ class JobScraper:
             captcha_image = await page.query_selector(self.selectors['captcha_image'])
             
             if captcha_image:
-                logger.warning("🔒 CAPTCHA detected!")
+                logger.warning("[CAPTCHA] CAPTCHA detected!")
                 
                 # Try auto-solving first if available
                 if self.auto_solve_captcha and self.captcha_solver:
-                    logger.info("🤖 Attempting auto-solve with TrOCR...")
+                    logger.info("[AUTO] Attempting auto-solve with TrOCR")
                     
                     success = await self.captcha_solver.solve_captcha_from_page(
                         page,
@@ -475,7 +475,7 @@ class JobScraper:
     async def simple_page_refresh_if_needed(self, page: Page) -> bool:
         """Simple refresh if contact info missing - no tab creation"""
         try:
-            logger.info("🔄 Refreshing page to get missing contact info...")
+            logger.info("[REFRESH] Refreshing page to get missing contact info")
             await page.reload(timeout=30000, wait_until='networkidle')
             await asyncio.sleep(2)  # Wait for page to stabilize
             return True
@@ -686,10 +686,10 @@ class JobScraper:
                 await page.wait_for_load_state('networkidle', timeout=15000)
             except Exception as nav_error:
                 if "Page crashed" in str(nav_error) or "Target page, context or browser has been closed" in str(nav_error):
-                    logger.warning(f"🔥 Page crash detected for {job_url}")
+                    logger.warning(f"[CRASH] Page crash detected for {job_url}")
                     
                     if retry_count < max_retries:
-                        logger.info(f"🔄 Restarting browser and retrying job (attempt {retry_count + 2}/{max_retries + 1})")
+                        logger.info(f"[RETRY] Restarting browser and retrying job (attempt {retry_count + 2}/{max_retries + 1})")
                         
                         # Close browser completely
                         if self.browser:
@@ -707,7 +707,7 @@ class JobScraper:
                         # Retry with new browser and page
                         return await self.scrape_single_job(new_page, job_data, retry_count + 1)
                     else:
-                        logger.error(f"❌ Max retries ({max_retries}) exceeded for {job_url}")
+                        logger.error(f"[ERROR] Max retries ({max_retries}) exceeded for {job_url}")
                         raise nav_error
                 else:
                     raise nav_error
@@ -732,7 +732,7 @@ class JobScraper:
                 external_data = await self.external_handler.detect_external_redirect(page)
             
             if external_data and external_data.get('has_external_redirect'):
-                logger.info(f"🔗 External redirect detected: {external_data.get('partner_domain')}")
+                logger.info(f"[EXTERNAL] External redirect detected: {external_data.get('partner_domain')}")
                 
                 # Extract basic info from current page (fallback)
                 title = await self.extract_text_safe(page, self.selectors['title'])
@@ -852,7 +852,7 @@ class JobScraper:
                     logger.info(f"Contact info extracted: {', '.join(contact_status)}")
                 else:
                     # Try page refresh to get missing contact info
-                    logger.info("💪 Trying page refresh to get missing contact info...")
+                    logger.info("[REFRESH] Trying page refresh to get missing contact info")
                     refresh_success = await self.simple_page_refresh_if_needed(page)
                     if refresh_success:
                         # Retry contact extraction after refresh
@@ -868,7 +868,7 @@ class JobScraper:
                         if contact_person: contact_status.append("contact_person")
                         
                         if contact_status:
-                            logger.info(f"✅ Contact info found after refresh: {', '.join(contact_status)}")
+                            logger.info(f"[SUCCESS] Contact info found after refresh: {', '.join(contact_status)}")
                         else:
                             logger.warning("No contact information found even after refresh (acceptable per assignment)")
                     else:
@@ -921,7 +921,7 @@ class JobScraper:
         except Exception as e:
             # Check if it's a crash-related error that wasn't caught above
             if ("Page crashed" in str(e) or "Target page, context or browser has been closed" in str(e)) and retry_count < max_retries:
-                logger.warning(f"🔥 Crash detected in main exception handler for {job_url}")
+                logger.warning(f"[CRASH] Crash detected in main exception handler for {job_url}")
                 
                 # Close browser completely
                 if self.browser:
@@ -999,13 +999,13 @@ class JobScraper:
                     try:
                         result = await loader.load_single_job(job_data)
                         if result and result.get('loaded', 0) > 0:
-                            logger.info(f"💾 Job {job_data.get('ref_nr', 'no-ref')} loaded to database")
+                            logger.info(f"[DATABASE] Job {job_data.get('ref_nr', 'no-ref')} loaded to database")
                         else:
-                            logger.warning(f"⚠️ Job {job_data.get('ref_nr', 'no-ref')} failed to load to database")
+                            logger.warning(f"[WARNING] Job {job_data.get('ref_nr', 'no-ref')} failed to load to database")
                     except Exception as e:
                         logger.error(f"Database load error for job {job_data.get('ref_nr', 'no-ref')}: {e}")
                         
-                logger.info(f"🚀 REALTIME DB: Attempted to load {len(validated_jobs)} jobs to database")
+                logger.info(f"[REALTIME] DB: Attempted to load {len(validated_jobs)} jobs to database")
             except Exception as e:
                 logger.error(f"Database loading module error: {e}")
                 logger.info("Continuing with file-only saving...")
@@ -1049,7 +1049,7 @@ class JobScraper:
                 df = pd.DataFrame(validated_jobs)
                 df.to_csv(csv_path, index=False, encoding='utf-8')
                 
-                logger.info(f"📁 Progress saved (legacy): {len(validated_jobs)} jobs in batch {batch_number}")
+                logger.info(f"[FILES] Progress saved (legacy): {len(validated_jobs)} jobs in batch {batch_number}")
             
         except Exception as e:
             logger.error(f"[ERROR] Error saving progress: {e}")
@@ -1136,10 +1136,10 @@ class JobScraper:
                 
                 # Log enhanced progress with statistics
                 success_rate = (self.stats['successful_scrapes'] / max(self.stats['total_processed'], 1)) * 100
-                logger.info(f"📊 Progress: {job_number}/{total_jobs} jobs ({success_rate:.1f}% success)")
+                logger.info(f"[PROGRESS] Progress: {job_number}/{total_jobs} jobs ({success_rate:.1f}% success)")
                 if self.stats['captcha_encounters'] > 0:
                     captcha_rate = (self.stats['captcha_solved'] / self.stats['captcha_encounters']) * 100
-                    logger.info(f"🔒 CAPTCHAs: {self.stats['captcha_solved']}/{self.stats['captcha_encounters']} solved ({captcha_rate:.1f}%)")
+                    logger.info(f"[CAPTCHA] CAPTCHAs: {self.stats['captcha_solved']}/{self.stats['captcha_encounters']} solved ({captcha_rate:.1f}%)")
             
             # Add configurable delay between requests
             await asyncio.sleep(self.delay_between_jobs)
@@ -1297,20 +1297,20 @@ class JobScraper:
         stats = self.get_scraping_statistics()
         
         logger.info("\n" + "="*60)
-        logger.info("🎯 SCRAPING SESSION COMPLETED")
+        logger.info("[COMPLETE] SCRAPING SESSION COMPLETED")
         logger.info("="*60)
         
         # Session info
         session_info = stats['session_info']
         logger.info(f"📅 Session: {session_info['session_id']}")
-        logger.info(f"⏱️  Duration: {session_info['elapsed_minutes']} minutes")
+        logger.info(f"[TIME] Duration: {session_info['elapsed_minutes']} minutes")
         
         # Performance metrics
         perf = stats['scraping_performance']
-        logger.info(f"📊 Total Jobs: {len(all_jobs)}")
+        logger.info(f"[TOTAL] Total Jobs: {len(all_jobs)}")
         logger.info(f"[SUCCESS] Successful: {perf['successful_scrapes']} ({perf['success_rate_percent']}%)")
         logger.info(f"[ERROR] Errors: {perf['errors']}")
-        logger.info(f"🚀 Speed: {perf['jobs_per_minute']} jobs/minute")
+        logger.info(f"[SPEED] Speed: {perf['jobs_per_minute']} jobs/minute")
         
         if perf['validation_failures'] > 0:
             logger.info(f"[WARNING]  Validation failures: {perf['validation_failures']}")
@@ -1332,19 +1332,19 @@ class JobScraper:
         if FILE_MANAGER_AVAILABLE and self.file_manager:
             file_stats = stats['file_management']
             if file_stats:
-                logger.info(f"📁 Files created: {file_stats.get('total_files_created', 0)}")
+                logger.info(f"[FILES] Files created: {file_stats.get('total_files_created', 0)}")
                 if self.use_sessions:
-                    logger.info(f"📂 Session directory: {file_stats.get('session_directory', 'N/A')}")
+                    logger.info(f"[SESSION] Session directory: {file_stats.get('session_directory', 'N/A')}")
         
         # Data quality insights
         jobs_with_email = len([job for job in all_jobs if job.get('email')])
         jobs_with_phone = len([job for job in all_jobs if job.get('telephone')])
         jobs_with_contact = len([job for job in all_jobs if job.get('contact_person')])
         
-        logger.info("\n📋 DATA QUALITY SUMMARY:")
-        logger.info(f"📧 Jobs with email: {jobs_with_email}/{len(all_jobs)} ({jobs_with_email/len(all_jobs)*100:.1f}%)")
-        logger.info(f"📞 Jobs with phone: {jobs_with_phone}/{len(all_jobs)} ({jobs_with_phone/len(all_jobs)*100:.1f}%)")
-        logger.info(f"👤 Jobs with contact: {jobs_with_contact}/{len(all_jobs)} ({jobs_with_contact/len(all_jobs)*100:.1f}%)")
+        logger.info("\n[QUALITY] DATA QUALITY SUMMARY:")
+        logger.info(f"[EMAIL] Jobs with email: {jobs_with_email}/{len(all_jobs)} ({jobs_with_email/len(all_jobs)*100:.1f}%)")
+        logger.info(f"[PHONE] Jobs with phone: {jobs_with_phone}/{len(all_jobs)} ({jobs_with_phone/len(all_jobs)*100:.1f}%)")
+        logger.info(f"[CONTACT] Jobs with contact: {jobs_with_contact}/{len(all_jobs)} ({jobs_with_contact/len(all_jobs)*100:.1f}%)")
         
         logger.info("="*60)
     
